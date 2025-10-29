@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <ranges>   
 #include <random>
+#include <array>
 
 class InvalidAlleles : public std::exception {
 private:
@@ -40,6 +41,15 @@ enum class Locus {
 
 struct Alleles {
 	std::pair<std::string, std::string> alleles;
+
+	Alleles() = default;
+
+	Alleles(std::string a1, std::string a2)
+		: alleles(a1, a2) { }
+
+	std::string toString() const {
+		return (alleles.first + alleles.second);
+	};
 };
 
 template <typename a>
@@ -54,7 +64,7 @@ private:
 	std::unordered_map<Locus, Alleles> m_genotype;
 
 public: 
-	Genotype(int id, std::initializer_list<std::pair<Locus, Alleles>> genes)
+	Genotype(int id, std::initializer_list<std::pair<const Locus, Alleles>> genes)
 		: m_id(id), m_genotype(genes) { }
 
 	Alleles getGene(const Locus l) const {
@@ -62,9 +72,17 @@ public:
 	}
 };
 
+// possibly make sex an optional
 struct Horse {
 	char sex;
 	Genotype<Locus> genotype;
+
+	Horse(char s, Genotype<Locus> g) 
+		: sex(s), genotype(g) { }
+
+	void showGenes(Locus l) {
+		std::cout << genotype.getGene(l).toString() << std::endl;
+	}
 };
 
 // Convert these two functions into one function using templates
@@ -91,7 +109,16 @@ Punnett<Alleles> generatePunnett(
 	try {
 		validateAlleles(sAlleles); validateAlleles(dAlleles);
 		// later insert a function here that ensures ordering of Alleles
-		
+
+		// Fix later
+		Punnett<Alleles> cPunnett;
+		cPunnett.punnett[0][0] = Alleles(sAlleles.alleles.first, dAlleles.alleles.first);
+		cPunnett.punnett[0][1] = Alleles(sAlleles.alleles.first, dAlleles.alleles.second);
+		cPunnett.punnett[1][0] = Alleles(sAlleles.alleles.second, dAlleles.alleles.first);
+		cPunnett.punnett[1][1] = Alleles(sAlleles.alleles.second, dAlleles.alleles.second);
+
+		return cPunnett;
+
 	} catch (const std::exception& e) {
 		std::cerr << "Caught an exception: " << e.what() << std::endl;
 	}
@@ -100,25 +127,35 @@ Punnett<Alleles> generatePunnett(
 // Looks at punnett square and generates frequency map
 // takes frequency map and gets weighted distribution
 // returns alleles associated with that
-Alleles resolvePunnettSquare(const Punnett<Alleles> &p) {
-	std::unordered_map<std::string, float> frequencies;
-	for (auto& cell : p.punnett | std::views::join) {
-		frequencies[cell]++;
+// REFACTOR : returning a string here is not best, 
+//            later should become a gene type or something
+//            also generally needs to be cleaned up
+std::string resolvePunnettSquare(const Punnett<Alleles> &p) {
+	try {
+		std::unordered_map<std::string, float> frequencies(4);
+		for (auto& cell : p.punnett | std::views::join) {
+			frequencies[cell.toString()]++;
+		}
+
+		int i = 0;
+		std::array<std::string, 4> alleles{ {} };
+		std::array<float, 4> weights{ {} };
+		for (auto& [key, value] : frequencies) {
+			alleles[i] = key;
+			weights[i] = frequencies[key] / 4; //magic number here represents total number of squares
+			std::cout << "Chances at " << key << " are " << weights[i] << " chance " << std::endl;
+ 			i++;
+		}
+
+		std::random_device rd;
+		std::mt19937_64 generator(rd());
+
+		std::discrete_distribution<> distribution(weights.begin(), weights.end());
+
+		return alleles[distribution(generator)];
+	} catch (const std::exception& e) {
+		std::cerr << "Caught an exception: " << e.what() << std::endl;
 	}
-	
-	std::unordered_map<std::string, float> weights(4);
-	for (auto& cell : frequencies | std::views::join) {
-		frequencies[cell] = frequencies[cell]/4; //magic number here represents total number of squares
-	}
-
-	std::random_device rd;
-	std::mt19937_64 generator(rd());
-
-	std::discrete_distribution<> distribution(frequencies.begin(), frequencies.end());
-
-	int chosen_index = distribution(generator);
-
-	return frequencies[chosen_index];
 }
 
 Genotype<Locus> generateOffspringGenotype(
@@ -127,9 +164,12 @@ Genotype<Locus> generateOffspringGenotype(
 	auto sireExtension = sGenotype.getGene(Locus::Extension);
 	auto damExtension = dGenotype.getGene(Locus::Extension);
 
-	auto a = resolvePunnettSquare(generatePunnett(sireExtension, damExtension));
-	Genotype<Locus> foalGenotype(0, a);
-	return Horse{ 'M', foalGenotype };
+	std::string chosenAllele = resolvePunnettSquare(generatePunnett(sireExtension, damExtension)); 
+	auto extensionAlleles = Alleles(std::string(1, chosenAllele[0]), std::string(1, chosenAllele[1]));
+
+	//defintely fix this later
+	Genotype<Locus> foalGenotype(0, {{Locus::Extension, extensionAlleles}});
+	return foalGenotype;
 }
 
 Horse generateOffspring(const Horse& sire, const Horse& dam) {
@@ -140,18 +180,28 @@ Horse generateOffspring(const Horse& sire, const Horse& dam) {
 	// Attempts to breed horses
 	try {
 		auto foalGenotype = generateOffspringGenotype(sire.genotype, dam.genotype);
+		Horse offspring{ 'U', foalGenotype }; // 'U' for unknown sex
+		return offspring;
 	} catch (const std::exception& e) {
 		std::cerr << "Caught an exception: " << e.what() << std::endl;
 	}
-
-	Genotype<Locus> placeholderGenotype(0, {}); // An empty genotype with ID 0
-	Horse offspring{ 'U', placeholderGenotype }; // 'U' for unknown sex
-	return offspring;
 }
 
 int main()
 {
-	
+	std::cout << "Getting horses" << std::endl;
+	auto sireA = Alleles(std::string(1, 'E'), std::string(1, 'e'));
+	auto damA  = Alleles(std::string(1, 'e'), std::string(1, 'e'));
+	auto sireG = Genotype<Locus>(0, { {Locus::Extension, sireA} });
+	auto damG  = Genotype<Locus>(0, { {Locus::Extension, damA} });
+
+	auto sire = Horse('M', sireG);
+	auto dam  = Horse('F', damG);
+
+	std::cout << "attempting to print" << std::endl;
+	auto offspring = generateOffspring(sire, dam);
+	offspring.showGenes(Locus::Extension);
+
 
 	return 0;
 }
