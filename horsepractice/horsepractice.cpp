@@ -36,8 +36,36 @@ enum class Locus {
 	Champange,
 	Gray,
 	SplashWhite,
-	FrameOvero
+	FrameOvero,
+	Flaxen,
+	Pangare,
+	Sooty,
+	Leopard,
+	MLeopard
 };
+
+struct LocusNode {
+	// this id probably doesn't need to exist
+	Locus id;
+	// std::string alleleName;
+	// possible other information
+
+	// What this node is dependent on
+	std::vector<Locus> dependencies;
+};
+
+// represents the group of Loci
+// Meant to help organize masking order
+// Gray masks White masks Dilution masks Base Coat
+struct maskNode {
+	std::vector<Locus> Loci;
+};
+
+using GeneGraph = std::unordered_map<Locus, LocusNode>;
+GeneGraph LocusDependencies;
+
+using MaskGraph = std::unordered_map<std::string, maskNode>;
+MaskGraph maskingOrder;
 
 struct Alleles {
 	std::pair<std::string, std::string> alleles;
@@ -85,6 +113,47 @@ struct Horse {
 	}
 };
 
+// Locus Graph Related
+void locusGraphConstructor() {
+	LocusDependencies.insert({ Locus::Extension, LocusNode{Locus::Extension, {} } });
+	LocusDependencies.insert({ Locus::Agouti, LocusNode{Locus::Agouti, {Locus::Extension} } });
+	/*
+	LocusDependencies.insert({ Locus::KIT, LocusNode{Locus::KIT, {Locus::Agouti} } });
+	LocusDependencies.insert({ Locus::Silver, LocusNode{Locus::Silver, {Locus::Agouti} } });
+	LocusDependencies.insert({ Locus::Cream, LocusNode{Locus::Cream, {Locus::Agouti} } });
+	LocusDependencies.insert({ Locus::Pearl, LocusNode{Locus::Pearl, {} } });
+	LocusDependencies.insert({ Locus::Dun, LocusNode{Locus::Dun, {Locus::Agouti} } });
+	LocusDependencies.insert({ Locus::Champange, LocusNode{Locus::Champange, {Locus::Agouti} } });
+	LocusDependencies.insert({ Locus::Gray, LocusNode{Locus::Gray, {} } });
+	LocusDependencies.insert({ Locus::SplashWhite, LocusNode{Locus::SplashWhite, {} } });
+	LocusDependencies.insert({ Locus::FrameOvero, LocusNode{Locus::FrameOvero, {} } });
+	LocusDependencies.insert({ Locus::Flaxen, LocusNode{Locus::Flaxen, {Locus::Extension} } });
+	LocusDependencies.insert({ Locus::Pangare, LocusNode{Locus::Pangare, {Locus::Extension} } });
+	LocusDependencies.insert({ Locus::Sooty, LocusNode{Locus::Sooty, {Locus::Extension} } });
+	LocusDependencies.insert({ Locus::Leopard, LocusNode{Locus::Leopard, {} } });
+	LocusDependencies.insert({ Locus::MLeopard, LocusNode{Locus::MLeopard, {Locus::Leopard} } });
+	*/
+}
+
+void maskGraphConstructor() {
+	/*
+	maskingOrder.insert({ "Gray", maskNode{ {Locus::Gray} }});
+	maskingOrder.insert({ "White", maskNode{ {Locus::KIT, Locus::Leopard, Locus::MLeopard, Locus::FrameOvero, Locus::SplashWhite} } });
+	*/
+	maskingOrder.insert({ "Dilution", maskNode{ {Locus::Agouti, Locus::Cream, Locus::Dun, Locus::Silver, Locus::Champange, Locus::Pearl, Locus::Sooty, Locus::Pangare, Locus::Flaxen} } });
+	maskingOrder.insert({ "Base Coat", maskNode{ {Locus::Extension} } });
+}
+
+void getPhenotype(const Horse& h) {
+	// need to add check to make sure horse exists
+	
+	/*
+	1. Traverse graph for all nodes. When a node has a dependency
+	*/
+}
+
+// Offspring Related
+
 // Convert these two functions into one function using templates
 // checking if second one is dominant
 bool validateAlleles(const std::string a1, const std::string a2) {
@@ -102,6 +171,14 @@ bool validateAlleles(const Alleles& a) {
 	return true;
 };
 
+Alleles ensureProperOrdering(const std::string& sAlleles, const std::string& dAlleles) {
+	std::cout << sAlleles << " " << dAlleles << std::endl;
+	if (!std::isupper(sAlleles[0]) && std::isupper(dAlleles[0])) {
+		return Alleles(dAlleles, sAlleles);
+	}
+	return Alleles(sAlleles, dAlleles);
+}
+
 Punnett<Alleles> generatePunnett(
 	const Alleles& sAlleles,
 	const Alleles& dAlleles) {
@@ -112,10 +189,10 @@ Punnett<Alleles> generatePunnett(
 
 		// Fix later
 		Punnett<Alleles> cPunnett;
-		cPunnett.punnett[0][0] = Alleles(sAlleles.alleles.first, dAlleles.alleles.first);
-		cPunnett.punnett[0][1] = Alleles(sAlleles.alleles.first, dAlleles.alleles.second);
-		cPunnett.punnett[1][0] = Alleles(sAlleles.alleles.second, dAlleles.alleles.first);
-		cPunnett.punnett[1][1] = Alleles(sAlleles.alleles.second, dAlleles.alleles.second);
+		cPunnett.punnett[0][0] = ensureProperOrdering(sAlleles.alleles.first, dAlleles.alleles.first);
+		cPunnett.punnett[0][1] = ensureProperOrdering(sAlleles.alleles.first, dAlleles.alleles.second);
+		cPunnett.punnett[1][0] = ensureProperOrdering(sAlleles.alleles.second, dAlleles.alleles.first);
+		cPunnett.punnett[1][1] = ensureProperOrdering(sAlleles.alleles.second, dAlleles.alleles.second);
 
 		return cPunnett;
 
@@ -164,11 +241,17 @@ Genotype<Locus> generateOffspringGenotype(
 	auto sireExtension = sGenotype.getGene(Locus::Extension);
 	auto damExtension = dGenotype.getGene(Locus::Extension);
 
-	std::string chosenAllele = resolvePunnettSquare(generatePunnett(sireExtension, damExtension)); 
-	auto extensionAlleles = Alleles(std::string(1, chosenAllele[0]), std::string(1, chosenAllele[1]));
+	std::string eAllele = resolvePunnettSquare(generatePunnett(sireExtension, damExtension)); 
+	auto extensionAlleles = Alleles(std::string(1, eAllele[0]), std::string(1, eAllele[1]));
+
+	auto sireAgouti = sGenotype.getGene(Locus::Agouti);
+	auto damAgouti = dGenotype.getGene(Locus::Agouti);
+
+	std::string aAllele = resolvePunnettSquare(generatePunnett(sireAgouti, damAgouti));
+	auto agoutiAlleles = Alleles(std::string(1, aAllele[0]), std::string(1, aAllele[1]));
 
 	//defintely fix this later
-	Genotype<Locus> foalGenotype(0, {{Locus::Extension, extensionAlleles}});
+	Genotype<Locus> foalGenotype(0, { {Locus::Extension, extensionAlleles}, {Locus::Agouti, agoutiAlleles} });
 	return foalGenotype;
 }
 
@@ -187,13 +270,18 @@ Horse generateOffspring(const Horse& sire, const Horse& dam) {
 	}
 }
 
+// QoL Horse Generation
+
+
 int main()
 {
 	std::cout << "Getting horses" << std::endl;
-	auto sireA = Alleles(std::string(1, 'E'), std::string(1, 'e'));
-	auto damA  = Alleles(std::string(1, 'e'), std::string(1, 'e'));
-	auto sireG = Genotype<Locus>(0, { {Locus::Extension, sireA} });
-	auto damG  = Genotype<Locus>(0, { {Locus::Extension, damA} });
+	auto sireAE = Alleles(std::string(1, 'E'), std::string(1, 'e'));
+	auto damAE  = Alleles(std::string(1, 'E'), std::string(1, 'e'));
+	auto sireAA = Alleles(std::string(1, 'a'), std::string(1, 'a'));
+	auto damAA = Alleles(std::string(1, 'A'), std::string(1, 'a'));
+	auto sireG = Genotype<Locus>(0, { {Locus::Extension, sireAE}, {Locus::Agouti, sireAA} });
+	auto damG  = Genotype<Locus>(0, { {Locus::Extension, damAE}, {Locus::Agouti, damAA} });
 
 	auto sire = Horse('M', sireG);
 	auto dam  = Horse('F', damG);
@@ -201,7 +289,7 @@ int main()
 	std::cout << "attempting to print" << std::endl;
 	auto offspring = generateOffspring(sire, dam);
 	offspring.showGenes(Locus::Extension);
-
+	offspring.showGenes(Locus::Agouti);
 
 	return 0;
 }
