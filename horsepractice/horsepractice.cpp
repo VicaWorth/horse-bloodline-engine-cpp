@@ -10,19 +10,24 @@
 #include <ranges>   
 #include <random>
 #include <array>
+#include <cctype>
 
 class InvalidAlleles : public std::exception {
 private:
 	std::string message;
 public:
-	// Constructor to initialize the exception message
 	InvalidAlleles(const std::string& msg) : message(msg) {}
 
-	// Override the virtual what() method to return the exception message
-	// The noexcept specifier indicates that this method will not throw exceptions.
 	virtual const char* what() const noexcept override {
 		return message.c_str();
 	}
+};
+
+enum class Dominance {
+	Dominant,
+	Recessive,
+	Codominant,
+	InDominant  //IncompletelyDominant
 };
 
 enum class Locus {
@@ -41,7 +46,8 @@ enum class Locus {
 	Pangare,
 	Sooty,
 	Leopard,
-	MLeopard
+	MLeopard,
+	Unknown
 };
 
 struct LocusNode {
@@ -63,20 +69,73 @@ struct maskNode {
 
 using GeneGraph = std::unordered_map<Locus, LocusNode>;
 GeneGraph LocusDependencies;
-
 using MaskGraph = std::unordered_map<std::string, maskNode>;
 MaskGraph maskingOrder;
 
-struct Alleles {
-	std::pair<std::string, std::string> alleles;
+struct Allele {
+	std::string symbol; // Like 'A' or "Sty"
+	Dominance dominance;
+	Locus locus;
 
-	Alleles() = default;
+	std::unordered_map<std::string, Locus> symbolToLocusTable = {
+		{"E", Locus::Extension},
+		{"A", Locus::Agouti},
+		{"RN", Locus::KIT},
+		{"TO", Locus::KIT},
+		{"SB1", Locus::KIT},
+		{"Z", Locus::Silver},
+		{"CR", Locus::Cream},
+		{"NCR", Locus::Cream},
+		{"PRL", Locus::Pearl} // add others later
+	};
 
-	Alleles(std::string a1, std::string a2)
-		: alleles(a1, a2) { }
+	Allele(std::string symbol) {
+		locus = symbolToLocusTable.find(toupper(symbol))];
+		if (locus == Locus::Cream) {
+			dominance = Dominance::InDominant;
+		}
+	}
+};
+
+struct Gene {
+	std::pair<Allele, Allele> alleles;
+
+	Gene() = default;
+
+	bool validateAlleles(Allele& a1, Allele& a2) {
+		if (a1.locus != a2.locus) {
+			throw InvalidAlleles("Alleles are invalid. They are not apart of the same Locus.");
+		}
+
+		if (a1.dominance == Dominance::Recessive && a2.dominance == Dominance::Dominant) {
+			std::swap(a1, a2);
+		}
+	}
+
+	Gene(Allele a1, Allele a2)
+		: alleles(a1, a2) {
+		validateAlleles(a1, a2);
+		alleles = { std::move(a1), std::move(a2) };
+	}
 
 	std::string toString() const {
-		return (alleles.first + alleles.second);
+		return (alleles.first.symbol + alleles.second.symbol);
+	};
+
+	constexpr bool isDominantPresent() const {
+		return (alleles.first.dominance == Dominance::Dominant);
+	};
+
+	constexpr bool isRecessivePresent() const {
+		return (alleles.first.dominance == Dominance::Recessive);
+	};
+
+	constexpr bool isHomozygous() const {
+		return (alleles.first.symbol == alleles.second.symbol);
+	};
+
+	constexpr bool isHeterozygous() const {
+		return (alleles.first.symbol != alleles.second.symbol);
 	};
 };
 
@@ -89,13 +148,13 @@ template <typename T>
 class Genotype {
 private:
 	int m_id;
-	std::unordered_map<Locus, Alleles> m_genotype;
+	std::unordered_map<Locus, Gene> m_genotype;
 
 public: 
-	Genotype(int id, std::initializer_list<std::pair<const Locus, Alleles>> genes)
+	Genotype(int id, std::initializer_list<std::pair<const Locus, Gene>> genes)
 		: m_id(id), m_genotype(genes) { }
 
-	Alleles getGene(const Locus l) const {
+	Gene getGene(const Locus l) const {
 		return m_genotype.at(l);
 	}
 };
@@ -109,7 +168,7 @@ struct Horse {
 		: sex(s), genotype(g) { }
 
 	void showGenes(Locus l) {
-		std::cout << genotype.getGene(l).toString() << std::endl;
+		std::cout << "   " << genotype.getGene(l).toString() << std::endl;
 	}
 };
 
@@ -148,51 +207,37 @@ void getPhenotype(const Horse& h) {
 	// need to add check to make sure horse exists
 	
 	/*
-	1. Traverse graph for all nodes. When a node has a dependency
+	1. Traverse graph for all nodes. When a node has a dependency, check its parent.
+		for (const auto& pair : h.genotype) {}
 	*/
+	auto const& e = h.genotype.getGene(Locus::Extension);
+	auto const& a = h.genotype.getGene(Locus::Agouti);
+	std::cout << "   " << "Phenotype: ";
+	if (a.isDominantPresent() && e.isDominantPresent()) {
+		std::cout << "Bay" << std::endl;
+	}
+	
+	if (a.isRecessivePresent() && e.isDominantPresent()) {
+		std::cout << "Black" << std::endl;
+	}
+
+	if (e.isRecessivePresent()) {
+		std::cout << "Chestnut" << std::endl;
+	}
 }
 
 // Offspring Related
-
-// Convert these two functions into one function using templates
-// checking if second one is dominant
-bool validateAlleles(const std::string a1, const std::string a2) {
-	if (a1 > a2) {
-		return false;
-	}
-	return true;
-};
-
-bool validateAlleles(const Alleles& a) {
-	// this part will need to be updated to properly work with different Alleles 
-	if (a.alleles.first > a.alleles.second) {
-		throw InvalidAlleles("Alleles are invalid. Ensure dominant gene is always first.");
-	}
-	return true;
-};
-
-Alleles ensureProperOrdering(const std::string& sAlleles, const std::string& dAlleles) {
-	std::cout << sAlleles << " " << dAlleles << std::endl;
-	if (!std::isupper(sAlleles[0]) && std::isupper(dAlleles[0])) {
-		return Alleles(dAlleles, sAlleles);
-	}
-	return Alleles(sAlleles, dAlleles);
-}
-
-Punnett<Alleles> generatePunnett(
-	const Alleles& sAlleles,
-	const Alleles& dAlleles) {
+Punnett<Gene> generatePunnett(
+	const Gene& sAlleles,
+	const Gene& dAlleles) {
 
 	try {
-		validateAlleles(sAlleles); validateAlleles(dAlleles);
-		// later insert a function here that ensures ordering of Alleles
-
-		// Fix later
-		Punnett<Alleles> cPunnett;
-		cPunnett.punnett[0][0] = ensureProperOrdering(sAlleles.alleles.first, dAlleles.alleles.first);
-		cPunnett.punnett[0][1] = ensureProperOrdering(sAlleles.alleles.first, dAlleles.alleles.second);
-		cPunnett.punnett[1][0] = ensureProperOrdering(sAlleles.alleles.second, dAlleles.alleles.first);
-		cPunnett.punnett[1][1] = ensureProperOrdering(sAlleles.alleles.second, dAlleles.alleles.second);
+		Punnett<Gene> cPunnett;
+		// change this into a function call called getAllele(0 or 1)
+		cPunnett.punnett[0][0] = Gene(sAlleles.alleles.first, dAlleles.alleles.first);
+		cPunnett.punnett[0][1] = Gene(sAlleles.alleles.first, dAlleles.alleles.second);
+		cPunnett.punnett[1][0] = Gene(sAlleles.alleles.second, dAlleles.alleles.first);
+		cPunnett.punnett[1][1] = Gene(sAlleles.alleles.second, dAlleles.alleles.second);
 
 		return cPunnett;
 
@@ -207,7 +252,7 @@ Punnett<Alleles> generatePunnett(
 // REFACTOR : returning a string here is not best, 
 //            later should become a gene type or something
 //            also generally needs to be cleaned up
-std::string resolvePunnettSquare(const Punnett<Alleles> &p) {
+Gene resolvePunnettSquare(const Punnett<Gene> &p) {
 	try {
 		std::unordered_map<std::string, float> frequencies(4);
 		for (auto& cell : p.punnett | std::views::join) {
@@ -220,7 +265,7 @@ std::string resolvePunnettSquare(const Punnett<Alleles> &p) {
 		for (auto& [key, value] : frequencies) {
 			alleles[i] = key;
 			weights[i] = frequencies[key] / 4; //magic number here represents total number of squares
-			std::cout << "Chances at " << key << " are " << weights[i] << " chance " << std::endl;
+			std::cout << "   " << "Chances at " << key << " are " << weights[i] << " chance " << std::endl;
  			i++;
 		}
 
@@ -229,7 +274,8 @@ std::string resolvePunnettSquare(const Punnett<Alleles> &p) {
 
 		std::discrete_distribution<> distribution(weights.begin(), weights.end());
 
-		return alleles[distribution(generator)];
+		std::string symbol = alleles[distribution(generator)];
+
 	} catch (const std::exception& e) {
 		std::cerr << "Caught an exception: " << e.what() << std::endl;
 	}
@@ -241,14 +287,15 @@ Genotype<Locus> generateOffspringGenotype(
 	auto sireExtension = sGenotype.getGene(Locus::Extension);
 	auto damExtension = dGenotype.getGene(Locus::Extension);
 
-	std::string eAllele = resolvePunnettSquare(generatePunnett(sireExtension, damExtension)); 
-	auto extensionAlleles = Alleles(std::string(1, eAllele[0]), std::string(1, eAllele[1]));
+	std::string eAllele = resolvePunnettSquare(generatePunnett(sireExtension, damExtension));
+	
+	auto extensionAlleles = Gene(, std::string(1, eAllele[1]));
 
 	auto sireAgouti = sGenotype.getGene(Locus::Agouti);
 	auto damAgouti = dGenotype.getGene(Locus::Agouti);
 
 	std::string aAllele = resolvePunnettSquare(generatePunnett(sireAgouti, damAgouti));
-	auto agoutiAlleles = Alleles(std::string(1, aAllele[0]), std::string(1, aAllele[1]));
+	auto agoutiAlleles = Gene(std::string(1, aAllele[0]), std::string(1, aAllele[1]));
 
 	//defintely fix this later
 	Genotype<Locus> foalGenotype(0, { {Locus::Extension, extensionAlleles}, {Locus::Agouti, agoutiAlleles} });
@@ -275,21 +322,23 @@ Horse generateOffspring(const Horse& sire, const Horse& dam) {
 
 int main()
 {
-	std::cout << "Getting horses" << std::endl;
-	auto sireAE = Alleles(std::string(1, 'E'), std::string(1, 'e'));
-	auto damAE  = Alleles(std::string(1, 'E'), std::string(1, 'e'));
-	auto sireAA = Alleles(std::string(1, 'a'), std::string(1, 'a'));
-	auto damAA = Alleles(std::string(1, 'A'), std::string(1, 'a'));
+	std::cout << "   " << "Getting horses" << std::endl;
+	auto sireAE = Gene(std::string(1, 'E'), std::string(1, 'e'));
+	auto damAE  = Gene(std::string(1, 'E'), std::string(1, 'e'));
+	auto sireAA = Gene(std::string(1, 'a'), std::string(1, 'a'));
+	auto damAA = Gene(std::string(1, 'A'), std::string(1, 'a'));
 	auto sireG = Genotype<Locus>(0, { {Locus::Extension, sireAE}, {Locus::Agouti, sireAA} });
 	auto damG  = Genotype<Locus>(0, { {Locus::Extension, damAE}, {Locus::Agouti, damAA} });
 
 	auto sire = Horse('M', sireG);
 	auto dam  = Horse('F', damG);
 
-	std::cout << "attempting to print" << std::endl;
+	//std::cout << "attempting to print" << std::endl;
 	auto offspring = generateOffspring(sire, dam);
 	offspring.showGenes(Locus::Extension);
 	offspring.showGenes(Locus::Agouti);
+
+	getPhenotype(offspring);
 
 	return 0;
 }
