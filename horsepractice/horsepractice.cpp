@@ -90,15 +90,22 @@ struct Allele {
 	};
 
 	Allele(std::string symbol) {
-		locus = symbolToLocusTable.find(toupper(symbol))];
+		std::transform(symbol.begin(), symbol.end(), symbol.begin(),
+			[](unsigned char c) { return std::toupper(c); });
+
+		locus = symbolToLocusTable.at(symbol);
 		if (locus == Locus::Cream) {
 			dominance = Dominance::InDominant;
 		}
+
+		this->symbol = std::move(symbol); // no idea if this actually does anything
 	}
 };
 
-struct Gene {
+class Gene {
+private:
 	std::pair<Allele, Allele> alleles;
+public:
 
 	Gene() = default;
 
@@ -110,7 +117,11 @@ struct Gene {
 		if (a1.dominance == Dominance::Recessive && a2.dominance == Dominance::Dominant) {
 			std::swap(a1, a2);
 		}
+
 	}
+
+	const Allele& getAllele1() { return alleles.first; }
+	const Allele& getAllele2() { return alleles.second; }
 
 	Gene(Allele a1, Allele a2)
 		: alleles(a1, a2) {
@@ -139,9 +150,9 @@ struct Gene {
 	};
 };
 
-template <typename a>
+template <typename A>
 struct Punnett {
-	std::array<std::array<a, 2>, 2> punnett;
+	std::array<std::array<A, 2>, 2> punnett;
 };
 
 template <typename T>
@@ -228,16 +239,20 @@ void getPhenotype(const Horse& h) {
 
 // Offspring Related
 Punnett<Gene> generatePunnett(
-	const Gene& sAlleles,
-	const Gene& dAlleles) {
+	Gene sAlleles,
+	Gene dAlleles) {
 
 	try {
-		Punnett<Gene> cPunnett;
-		// change this into a function call called getAllele(0 or 1)
-		cPunnett.punnett[0][0] = Gene(sAlleles.alleles.first, dAlleles.alleles.first);
-		cPunnett.punnett[0][1] = Gene(sAlleles.alleles.first, dAlleles.alleles.second);
-		cPunnett.punnett[1][0] = Gene(sAlleles.alleles.second, dAlleles.alleles.first);
-		cPunnett.punnett[1][1] = Gene(sAlleles.alleles.second, dAlleles.alleles.second);
+		Punnett<Gene> cPunnett = { {
+			{
+				Gene(sAlleles.getAllele1(), dAlleles.getAllele1()),
+				Gene(sAlleles.getAllele1(), dAlleles.getAllele2())
+			}, 
+			{ 
+				Gene(sAlleles.getAllele2(), dAlleles.getAllele1()),
+				Gene(sAlleles.getAllele2(), dAlleles.getAllele2())
+			} 
+		} }; 
 
 		return cPunnett;
 
@@ -281,24 +296,30 @@ Gene resolvePunnettSquare(const Punnett<Gene> &p) {
 	}
 }
 
+Gene generateOffspringGene(
+	const Genotype<Locus>& sGenotype,
+	const Genotype<Locus>& dGenotype, 
+	const Locus& L) {
+	return resolvePunnettSquare(generatePunnett(sGenotype.getGene(L), dGenotype.getGene(L)));
+}
+
 Genotype<Locus> generateOffspringGenotype(
 	const Genotype<Locus>& sGenotype,
-	const Genotype<Locus>& dGenotype) {
-	auto sireExtension = sGenotype.getGene(Locus::Extension);
-	auto damExtension = dGenotype.getGene(Locus::Extension);
+	const Genotype<Locus>& dGenotype,
+	const std::vector<Locus> L) {
 
-	std::string eAllele = resolvePunnettSquare(generatePunnett(sireExtension, damExtension));
-	
-	auto extensionAlleles = Gene(, std::string(1, eAllele[1]));
+	/*
+	Possibly get some kind of lambda function that will 
+	- go through each Locus
+	- call generateOffspringGene
+	- add it to the Genotype Object
+	*/
 
-	auto sireAgouti = sGenotype.getGene(Locus::Agouti);
-	auto damAgouti = dGenotype.getGene(Locus::Agouti);
-
-	std::string aAllele = resolvePunnettSquare(generatePunnett(sireAgouti, damAgouti));
-	auto agoutiAlleles = Gene(std::string(1, aAllele[0]), std::string(1, aAllele[1]));
+	Gene eAllele = generateOffspringGene(sGenotype, dGenotype, L[0]);
+	Gene aAllele = generateOffspringGene(sGenotype, dGenotype, L[1]);
 
 	//defintely fix this later
-	Genotype<Locus> foalGenotype(0, { {Locus::Extension, extensionAlleles}, {Locus::Agouti, agoutiAlleles} });
+	Genotype<Locus> foalGenotype(0, { {Locus::Extension, eAllele}, {Locus::Agouti, aAllele} });
 	return foalGenotype;
 }
 
@@ -309,7 +330,8 @@ Horse generateOffspring(const Horse& sire, const Horse& dam) {
 
 	// Attempts to breed horses
 	try {
-		auto foalGenotype = generateOffspringGenotype(sire.genotype, dam.genotype);
+		std::vector<Locus> L = { Locus::Extension, Locus::Agouti };
+		auto foalGenotype = generateOffspringGenotype(sire.genotype, dam.genotype, L);
 		Horse offspring{ 'U', foalGenotype }; // 'U' for unknown sex
 		return offspring;
 	} catch (const std::exception& e) {
