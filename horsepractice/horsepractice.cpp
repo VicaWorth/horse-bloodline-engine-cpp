@@ -89,11 +89,21 @@ struct Allele {
 		{"PRL", Locus::Pearl} // add others later
 	};
 
-	Allele(std::string symbol) {
-		std::transform(symbol.begin(), symbol.end(), symbol.begin(),
+	Allele(std::string symbol) 
+		: symbol(symbol)
+	{
+		std::string s = symbol;
+		std::transform(s.begin(), s.end(), s.begin(),
 			[](unsigned char c) { return std::toupper(c); });
 
-		locus = symbolToLocusTable.at(symbol);
+		locus = symbolToLocusTable.at(s);
+		if (isupper(symbol[0])) {
+			dominance = Dominance::Dominant;
+		}
+		else {
+			dominance = Dominance::Recessive;
+		}
+
 		if (locus == Locus::Cream) {
 			dominance = Dominance::InDominant;
 		}
@@ -106,28 +116,25 @@ class Gene {
 private:
 	std::pair<Allele, Allele> alleles;
 public:
+	const Allele& getAllele1() const { return alleles.first; }
+	const Allele& getAllele2() const { return alleles.second; }
 
-	Gene() = default;
-
-	bool validateAlleles(Allele& a1, Allele& a2) {
-		if (a1.locus != a2.locus) {
+	//implement rule of 5
+	Gene(Allele a1, Allele a2)
+		: alleles(std::move(a1), std::move(a2)) 
+	{
+		if (alleles.first.locus != alleles.second.locus) {
 			throw InvalidAlleles("Alleles are invalid. They are not apart of the same Locus.");
 		}
 
-		if (a1.dominance == Dominance::Recessive && a2.dominance == Dominance::Dominant) {
-			std::swap(a1, a2);
+
+		if (alleles.second.dominance == Dominance::Dominant) {
+			std::swap(alleles.first, alleles.second);
 		}
-
 	}
 
-	const Allele& getAllele1() { return alleles.first; }
-	const Allele& getAllele2() { return alleles.second; }
-
-	Gene(Allele a1, Allele a2)
-		: alleles(a1, a2) {
-		validateAlleles(a1, a2);
-		alleles = { std::move(a1), std::move(a2) };
-	}
+	/*Gene(const Gene& other) = default;
+	Gene& operator=(const Gene& other) = default;*/
 
 	std::string toString() const {
 		return (alleles.first.symbol + alleles.second.symbol);
@@ -150,33 +157,42 @@ public:
 	};
 };
 
-template <typename A>
-struct Punnett {
-	std::array<std::array<A, 2>, 2> punnett;
-};
-
 template <typename T>
 class Genotype {
 private:
 	int m_id;
 	std::unordered_map<Locus, Gene> m_genotype;
 
-public: 
+public:
 	Genotype(int id, std::initializer_list<std::pair<const Locus, Gene>> genes)
-		: m_id(id), m_genotype(genes) { }
+		: m_id(id), m_genotype(genes) {
+	}
 
 	Gene getGene(const Locus l) const {
 		return m_genotype.at(l);
 	}
 };
 
-// possibly make sex an optional
+template <typename A>
+struct Punnett {
+	std::array<std::array<A, 2>, 2> punnett;
+
+	Punnett(const A& tl, const A& tr, const A& bl, const A& br) 
+		: punnett{ {
+			{ tl, tr },
+			{ bl, br }
+		}} 
+	{ }
+};
+
+// need to control that sex has to be a 'F' or a 'M'.
 struct Horse {
 	char sex;
 	Genotype<Locus> genotype;
 
-	Horse(char s, Genotype<Locus> g) 
-		: sex(s), genotype(g) { }
+	Horse(char s, Genotype<Locus> g)
+		: sex(s), genotype(g) {
+	}
 
 	void showGenes(Locus l) {
 		std::cout << "   " << genotype.getGene(l).toString() << std::endl;
@@ -216,7 +232,7 @@ void maskGraphConstructor() {
 
 void getPhenotype(const Horse& h) {
 	// need to add check to make sure horse exists
-	
+
 	/*
 	1. Traverse graph for all nodes. When a node has a dependency, check its parent.
 		for (const auto& pair : h.genotype) {}
@@ -227,7 +243,7 @@ void getPhenotype(const Horse& h) {
 	if (a.isDominantPresent() && e.isDominantPresent()) {
 		std::cout << "Bay" << std::endl;
 	}
-	
+
 	if (a.isRecessivePresent() && e.isDominantPresent()) {
 		std::cout << "Black" << std::endl;
 	}
@@ -237,68 +253,48 @@ void getPhenotype(const Horse& h) {
 	}
 }
 
-// Offspring Related
-Punnett<Gene> generatePunnett(
-	Gene sAlleles,
-	Gene dAlleles) {
-
-	try {
-		Punnett<Gene> cPunnett = { {
-			{
-				Gene(sAlleles.getAllele1(), dAlleles.getAllele1()),
-				Gene(sAlleles.getAllele1(), dAlleles.getAllele2())
-			}, 
-			{ 
-				Gene(sAlleles.getAllele2(), dAlleles.getAllele1()),
-				Gene(sAlleles.getAllele2(), dAlleles.getAllele2())
-			} 
-		} }; 
-
-		return cPunnett;
-
-	} catch (const std::exception& e) {
-		std::cerr << "Caught an exception: " << e.what() << std::endl;
-	}
-};
+static Punnett<Gene> generatePunnett(const Gene& sAlleles, const Gene& dAlleles) {
+	// This is the correct aggregate initialization for a struct containing a std::array.
+	Punnett<Gene> cPunnett(
+		Gene(sAlleles.getAllele1(), dAlleles.getAllele1()),
+		Gene(sAlleles.getAllele1(), dAlleles.getAllele2()),
+		Gene(sAlleles.getAllele2(), dAlleles.getAllele1()),
+		Gene(sAlleles.getAllele2(), dAlleles.getAllele2())
+	);
+	return cPunnett;
+}
 
 // Looks at punnett square and generates frequency map
 // takes frequency map and gets weighted distribution
-// returns alleles associated with that
-// REFACTOR : returning a string here is not best, 
-//            later should become a gene type or something
-//            also generally needs to be cleaned up
-Gene resolvePunnettSquare(const Punnett<Gene> &p) {
-	try {
-		std::unordered_map<std::string, float> frequencies(4);
-		for (auto& cell : p.punnett | std::views::join) {
-			frequencies[cell.toString()]++;
-		}
-
-		int i = 0;
-		std::array<std::string, 4> alleles{ {} };
-		std::array<float, 4> weights{ {} };
-		for (auto& [key, value] : frequencies) {
-			alleles[i] = key;
-			weights[i] = frequencies[key] / 4; //magic number here represents total number of squares
-			std::cout << "   " << "Chances at " << key << " are " << weights[i] << " chance " << std::endl;
- 			i++;
-		}
-
-		std::random_device rd;
-		std::mt19937_64 generator(rd());
-
-		std::discrete_distribution<> distribution(weights.begin(), weights.end());
-
-		std::string symbol = alleles[distribution(generator)];
-
-	} catch (const std::exception& e) {
-		std::cerr << "Caught an exception: " << e.what() << std::endl;
+// returns gene associated with that
+Gene resolvePunnettSquare(const Punnett<Gene>& p) {
+	std::unordered_map<std::string, float> frequencies(4);
+	for (auto& cell : p.punnett | std::views::join) {
+		frequencies[cell.toString()]++;
 	}
+
+	std::vector<std::string> outcomes;
+	std::vector<double> weights;
+	for (const auto& [key, value] : frequencies) {
+		outcomes.push_back(key);
+		weights.push_back(static_cast<double>(value));
+	}
+
+	std::random_device rd;
+	std::mt19937 generator(rd());
+	std::discrete_distribution<> distribution(weights.begin(), weights.end());
+
+	std::string chosenSymbols = outcomes[distribution(generator)];
+
+	Allele a1(std::string(1, chosenSymbols[0]));
+	Allele a2(std::string(1, chosenSymbols[1]));
+
+	return Gene(a1, a2);
 }
 
 Gene generateOffspringGene(
 	const Genotype<Locus>& sGenotype,
-	const Genotype<Locus>& dGenotype, 
+	const Genotype<Locus>& dGenotype,
 	const Locus& L) {
 	return resolvePunnettSquare(generatePunnett(sGenotype.getGene(L), dGenotype.getGene(L)));
 }
@@ -309,7 +305,7 @@ Genotype<Locus> generateOffspringGenotype(
 	const std::vector<Locus> L) {
 
 	/*
-	Possibly get some kind of lambda function that will 
+	Possibly get some kind of lambda function that will
 	- go through each Locus
 	- call generateOffspringGene
 	- add it to the Genotype Object
@@ -328,15 +324,10 @@ Horse generateOffspring(const Horse& sire, const Horse& dam) {
 		throw std::invalid_argument("First horse must be male and second must be female.");
 	}
 
-	// Attempts to breed horses
-	try {
-		std::vector<Locus> L = { Locus::Extension, Locus::Agouti };
-		auto foalGenotype = generateOffspringGenotype(sire.genotype, dam.genotype, L);
-		Horse offspring{ 'U', foalGenotype }; // 'U' for unknown sex
-		return offspring;
-	} catch (const std::exception& e) {
-		std::cerr << "Caught an exception: " << e.what() << std::endl;
-	}
+	std::vector<Locus> L = { Locus::Extension, Locus::Agouti };
+	auto foalGenotype = generateOffspringGenotype(sire.genotype, dam.genotype, L);
+	Horse offspring{ 'U', foalGenotype }; // 'U' for unknown sex
+	return offspring;
 }
 
 // QoL Horse Generation
@@ -345,17 +336,17 @@ Horse generateOffspring(const Horse& sire, const Horse& dam) {
 int main()
 {
 	std::cout << "   " << "Getting horses" << std::endl;
-	auto sireAE = Gene(std::string(1, 'E'), std::string(1, 'e'));
-	auto damAE  = Gene(std::string(1, 'E'), std::string(1, 'e'));
-	auto sireAA = Gene(std::string(1, 'a'), std::string(1, 'a'));
-	auto damAA = Gene(std::string(1, 'A'), std::string(1, 'a'));
+	auto sireAE = Gene(Allele("E"), Allele("e"));
+	auto damAE  = Gene(Allele("E"), Allele("e"));
+	auto sireAA = Gene(Allele("a"), Allele("A"));
+	auto damAA = Gene(Allele("a"), Allele("a"));
 	auto sireG = Genotype<Locus>(0, { {Locus::Extension, sireAE}, {Locus::Agouti, sireAA} });
 	auto damG  = Genotype<Locus>(0, { {Locus::Extension, damAE}, {Locus::Agouti, damAA} });
 
 	auto sire = Horse('M', sireG);
 	auto dam  = Horse('F', damG);
 
-	//std::cout << "attempting to print" << std::endl;
+	std::cout << "attempting to print" << std::endl;
 	auto offspring = generateOffspring(sire, dam);
 	offspring.showGenes(Locus::Extension);
 	offspring.showGenes(Locus::Agouti);
