@@ -99,9 +99,22 @@ struct Allele {
 		locus = symbolToLocusTable.at(s);
 		if (isupper(symbol[0])) {
 			dominance = Dominance::Dominant;
-		}
-		else {
+		} else {
 			dominance = Dominance::Recessive;
+		}
+
+		if (locus == Locus::KIT) {
+			if (s == "W") {
+				dominance = Dominance::Dominant;
+			} else if (s == "RN") {
+				dominance = Dominance::Codominant;
+			} else if (s == "SB1") {
+				dominance = Dominance::InDominant;
+			} else if (s == "TO") {
+				dominance = Dominance::Dominant;
+			} else {
+				dominance = Dominance::Recessive;
+			}
 		}
 
 		if (locus == Locus::Cream) {
@@ -127,7 +140,6 @@ public:
 			throw InvalidAlleles("Alleles are invalid. They are not apart of the same Locus.");
 		}
 
-
 		if (alleles.second.dominance == Dominance::Dominant) {
 			std::swap(alleles.first, alleles.second);
 		}
@@ -146,6 +158,14 @@ public:
 
 	constexpr bool isRecessivePresent() const {
 		return (alleles.first.dominance == Dominance::Recessive);
+	};
+
+	constexpr bool isCodominantPresent() const {
+		return (alleles.first.dominance == Dominance::Codominant);
+	};
+
+	constexpr bool isInDominantPresent() const {
+		return (alleles.first.dominance == Dominance::InDominant);
 	};
 
 	constexpr bool isHomozygous() const {
