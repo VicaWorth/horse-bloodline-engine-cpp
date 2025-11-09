@@ -23,6 +23,13 @@ public:
 	}
 };
 
+enum class MaskingLayers {
+	Gray,
+	White,
+	Dilution,
+	Base 
+};
+
 enum class Dominance {
 	Dominant,
 	Recessive,
@@ -51,10 +58,8 @@ enum class Locus {
 };
 
 struct LocusNode {
-	// this id probably doesn't need to exist
 	Locus id;
-	// std::string alleleName;
-	// possible other information
+	
 
 	// What this node is dependent on
 	std::vector<Locus> dependencies;
@@ -69,7 +74,7 @@ struct maskNode {
 
 using GeneGraph = std::unordered_map<Locus, LocusNode>;
 GeneGraph LocusDependencies;
-using MaskGraph = std::unordered_map<std::string, maskNode>;
+using MaskGraph = std::unordered_map<MaskingLayers, maskNode>;
 MaskGraph maskingOrder;
 
 struct Allele {
@@ -104,6 +109,7 @@ struct Allele {
 		}
 
 		if (locus == Locus::KIT) {
+			// Represents Alleleic Series
 			if (s == "W") {
 				dominance = Dominance::Dominant;
 			} else if (s == "RN") {
@@ -184,9 +190,19 @@ private:
 	std::unordered_map<Locus, Gene> m_genotype;
 
 public:
-	Genotype(int id, std::initializer_list<std::pair<const Locus, Gene>> genes)
-		: m_id(id), m_genotype(genes) {
+	Genotype(int id, std::unordered_map<Locus, Gene>&& genotype_map)
+		: m_id(id), m_genotype(std::move(genotype_map)) {
 	}
+
+	// Source - https://stackoverflow.com/a
+	// Posted by Hajo Kirchhoff
+	// Retrieved 2025-11-09, License - CC BY-SA 4.0
+
+	auto begin() { return m_genotype.begin(); }
+	auto end()   { return m_genotype.end(); }
+
+	auto begin() const { return m_genotype.begin(); }
+	auto end()   const { return m_genotype.end(); }
 
 	Gene getGene(const Locus l) const {
 		return m_genotype.at(l);
@@ -230,7 +246,9 @@ void locusGraphConstructor() {
 	LocusDependencies.insert({ Locus::Pearl, LocusNode{Locus::Pearl, {} } });
 	LocusDependencies.insert({ Locus::Dun, LocusNode{Locus::Dun, {Locus::Agouti} } });
 	LocusDependencies.insert({ Locus::Champange, LocusNode{Locus::Champange, {Locus::Agouti} } });
+	*/ 
 	LocusDependencies.insert({ Locus::Gray, LocusNode{Locus::Gray, {} } });
+	/*
 	LocusDependencies.insert({ Locus::SplashWhite, LocusNode{Locus::SplashWhite, {} } });
 	LocusDependencies.insert({ Locus::FrameOvero, LocusNode{Locus::FrameOvero, {} } });
 	LocusDependencies.insert({ Locus::Flaxen, LocusNode{Locus::Flaxen, {Locus::Extension} } });
@@ -242,34 +260,55 @@ void locusGraphConstructor() {
 }
 
 void maskGraphConstructor() {
-	/*
-	maskingOrder.insert({ "Gray", maskNode{ {Locus::Gray} }});
-	maskingOrder.insert({ "White", maskNode{ {Locus::KIT, Locus::Leopard, Locus::MLeopard, Locus::FrameOvero, Locus::SplashWhite} } });
-	*/
-	maskingOrder.insert({ "Dilution", maskNode{ {Locus::Agouti, Locus::Cream, Locus::Dun, Locus::Silver, Locus::Champange, Locus::Pearl, Locus::Sooty, Locus::Pangare, Locus::Flaxen} } });
-	maskingOrder.insert({ "Base Coat", maskNode{ {Locus::Extension} } });
+	maskingOrder.insert({ MaskingLayers::Gray, maskNode{ {Locus::Gray} }});
+	maskingOrder.insert({ MaskingLayers::White, maskNode{ {Locus::KIT, Locus::Leopard, Locus::MLeopard, Locus::FrameOvero, Locus::SplashWhite} } });
+	maskingOrder.insert({ MaskingLayers::Dilution, maskNode{ {Locus::Agouti, Locus::Cream, Locus::Dun, Locus::Silver, Locus::Champange, Locus::Pearl, Locus::Sooty, Locus::Pangare, Locus::Flaxen} } });
+	maskingOrder.insert({ MaskingLayers::Base, maskNode{ {Locus::Extension} } });
 }
 
+/*
+This code predicts what the horse will look like using it's genotype
+
+First, it loops through masks to see if those are present.
+If Gray is, then the horse is gray and it wont continue.
+For KIT it just adds a white modifier mask on top
+If there are dilutions then it will not proceed to base layer
+*/
 void getPhenotype(const Horse& h) {
-	// need to add check to make sure horse exists
-
-	/*
-	1. Traverse graph for all nodes. When a node has a dependency, check its parent.
-		for (const auto& pair : h.genotype) {}
-	*/
-	auto const& e = h.genotype.getGene(Locus::Extension);
-	auto const& a = h.genotype.getGene(Locus::Agouti);
 	std::cout << "   " << "Phenotype: ";
-	if (a.isDominantPresent() && e.isDominantPresent()) {
-		std::cout << "Bay" << std::endl;
-	}
 
-	if (a.isRecessivePresent() && e.isDominantPresent()) {
-		std::cout << "Black" << std::endl;
-	}
+	// raw loops, probably something can be done here
+	for (const auto& [layer, maskingNode] : maskingOrder) {
+		if (layer == MaskingLayers::Gray) {
+			std::cout << "Gray" << std::endl;
+			return;
+		} else if (layer == MaskingLayers::White) {
+			
+		} else if (layer == MaskingLayers::Dilution) {
+			Gene a = h.genotype.getGene(Locus::Agouti);
+			Gene e = h.genotype.getGene(Locus::Agouti);
+			for (const auto& locus : maskingNode.Loci) {
+				LocusNode ln = LocusDependencies.at(locus);
+				for (const auto& parent : ln.dependencies) {
+					if (locus == Locus::Agouti && parent == Locus::Extension) {
+						if (a.isDominantPresent() && e.isDominantPresent()) {
+							std::cout << "Bay" << std::endl;
+						}
+					}
+				}
+			}
+		} else {
+			Gene a = h.genotype.getGene(Locus::Agouti);
+			Gene e = h.genotype.getGene(Locus::Agouti);
 
-	if (e.isRecessivePresent()) {
-		std::cout << "Chestnut" << std::endl;
+			if (a.isRecessivePresent() && e.isDominantPresent()) {
+				std::cout << "Black" << std::endl;
+			}
+
+			if (e.isRecessivePresent()) {
+				std::cout << "Chestnut" << std::endl;
+			}
+		}
 	}
 }
 
@@ -312,6 +351,7 @@ Gene resolvePunnettSquare(const Punnett<Gene>& p) {
 	return Gene(a1, a2);
 }
 
+// Probably defunct
 Gene generateOffspringGene(
 	const Genotype<Locus>& sGenotype,
 	const Genotype<Locus>& dGenotype,
@@ -324,18 +364,13 @@ Genotype<Locus> generateOffspringGenotype(
 	const Genotype<Locus>& dGenotype,
 	const std::vector<Locus> L) {
 
-	/*
-	Possibly get some kind of lambda function that will
-	- go through each Locus
-	- call generateOffspringGene
-	- add it to the Genotype Object
-	*/
+	// consider lambda here
+	std::unordered_map<Locus, Gene> foalGenes;
+	for (const auto& [locus, sireGene] : sGenotype) {
+		foalGenes.emplace(locus, std::move(resolvePunnettSquare(generatePunnett( sireGene, dGenotype.getGene(locus) ))) );
+	}
 
-	Gene eAllele = generateOffspringGene(sGenotype, dGenotype, L[0]);
-	Gene aAllele = generateOffspringGene(sGenotype, dGenotype, L[1]);
-
-	//defintely fix this later
-	Genotype<Locus> foalGenotype(0, { {Locus::Extension, eAllele}, {Locus::Agouti, aAllele} });
+	Genotype<Locus> foalGenotype(0, std::move(foalGenes));
 	return foalGenotype;
 }
 
@@ -350,23 +385,28 @@ Horse generateOffspring(const Horse& sire, const Horse& dam) {
 	return offspring;
 }
 
-// QoL Horse Generation
-
-
 int main()
 {
 	std::cout << "   " << "Getting horses" << std::endl;
-	auto sireAE = Gene(Allele("E"), Allele("e"));
+	auto sireAE = Gene(Allele("e"), Allele("E"));
 	auto damAE  = Gene(Allele("E"), Allele("e"));
-	auto sireAA = Gene(Allele("a"), Allele("A"));
-	auto damAA = Gene(Allele("a"), Allele("a"));
+	auto sireAA = Gene(Allele("A"), Allele("a"));
+	auto damAA = Gene(Allele("a"), Allele("A"));
 	auto sireG = Genotype<Locus>(0, { {Locus::Extension, sireAE}, {Locus::Agouti, sireAA} });
 	auto damG  = Genotype<Locus>(0, { {Locus::Extension, damAE}, {Locus::Agouti, damAA} });
 
 	auto sire = Horse('M', sireG);
 	auto dam  = Horse('F', damG);
 
-	std::cout << "attempting to print" << std::endl;
+	std::cout << "Sire's Genotype" << std::endl;
+	sire.showGenes(Locus::Extension);
+	sire.showGenes(Locus::Agouti);
+
+	std::cout << "Dam's Genotype" << std::endl;
+	dam.showGenes(Locus::Extension);
+	dam.showGenes(Locus::Agouti);
+
+	std::cout << "Offsprings's Genotype" << std::endl;
 	auto offspring = generateOffspring(sire, dam);
 	offspring.showGenes(Locus::Extension);
 	offspring.showGenes(Locus::Agouti);
@@ -375,14 +415,3 @@ int main()
 
 	return 0;
 }
-
-// Run program: Ctrl + F5 or Debug > Start Without Debugging menu
-// Debug program: F5 or Debug > Start Debugging menu
-
-// Tips for Getting Started: 
-//   1. Use the Solution Explorer window to add/manage files
-//   2. Use the Team Explorer window to connect to source control
-//   3. Use the Output window to see build output and other messages
-//   4. Use the Error List window to view errors
-//   5. Go to Project > Add New Item to create new code files, or Project > Add Existing Item to add existing code files to the project
-//   6. In the future, to open this project again, go to File > Open > Project and select the .sln file
