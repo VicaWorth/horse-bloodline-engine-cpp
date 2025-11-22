@@ -23,7 +23,7 @@ public:
 	}
 };
 
-enum class MaskingLayers {
+enum class MaskLayers {
 	Gray,
 	White,
 	Dilution,
@@ -57,25 +57,14 @@ enum class Locus {
 	Unknown
 };
 
-struct LocusNode {
-	Locus id;
-	
-
-	// What this node is dependent on
-	std::vector<Locus> dependencies;
+struct EpistasisNode {
+	//Locus id;
+	std::vector<Locus> locusParents;
+	MaskLayers maskLayer;
 };
 
-// represents the group of Loci
-// Meant to help organize masking order
-// Gray masks White masks Dilution masks Base Coat
-struct maskNode {
-	std::vector<Locus> Loci;
-};
-
-using GeneGraph = std::unordered_map<Locus, LocusNode>;
-GeneGraph LocusDependencies;
-using MaskGraph = std::unordered_map<MaskingLayers, maskNode>;
-MaskGraph maskingOrder;
+using EpistasisGraph = std::unordered_map<Locus, EpistasisNode>;
+EpistasisGraph epistasisDependencies;
 
 struct Allele {
 	std::string symbol; // Like 'A' or "Sty"
@@ -236,34 +225,8 @@ struct Horse {
 };
 
 // Locus Graph Related
-void locusGraphConstructor() {
-	LocusDependencies.insert({ Locus::Extension, LocusNode{Locus::Extension, {} } });
-	LocusDependencies.insert({ Locus::Agouti, LocusNode{Locus::Agouti, {Locus::Extension} } });
-	/*
-	LocusDependencies.insert({ Locus::KIT, LocusNode{Locus::KIT, {Locus::Agouti} } });
-	LocusDependencies.insert({ Locus::Silver, LocusNode{Locus::Silver, {Locus::Agouti} } });
-	LocusDependencies.insert({ Locus::Cream, LocusNode{Locus::Cream, {Locus::Agouti} } });
-	LocusDependencies.insert({ Locus::Pearl, LocusNode{Locus::Pearl, {} } });
-	LocusDependencies.insert({ Locus::Dun, LocusNode{Locus::Dun, {Locus::Agouti} } });
-	LocusDependencies.insert({ Locus::Champange, LocusNode{Locus::Champange, {Locus::Agouti} } });
-	*/ 
-	LocusDependencies.insert({ Locus::Gray, LocusNode{Locus::Gray, {} } });
-	/*
-	LocusDependencies.insert({ Locus::SplashWhite, LocusNode{Locus::SplashWhite, {} } });
-	LocusDependencies.insert({ Locus::FrameOvero, LocusNode{Locus::FrameOvero, {} } });
-	LocusDependencies.insert({ Locus::Flaxen, LocusNode{Locus::Flaxen, {Locus::Extension} } });
-	LocusDependencies.insert({ Locus::Pangare, LocusNode{Locus::Pangare, {Locus::Extension} } });
-	LocusDependencies.insert({ Locus::Sooty, LocusNode{Locus::Sooty, {Locus::Extension} } });
-	LocusDependencies.insert({ Locus::Leopard, LocusNode{Locus::Leopard, {} } });
-	LocusDependencies.insert({ Locus::MLeopard, LocusNode{Locus::MLeopard, {Locus::Leopard} } });
-	*/
-}
-
-void maskGraphConstructor() {
-	maskingOrder.insert({ MaskingLayers::Gray, maskNode{ {Locus::Gray} }});
-	maskingOrder.insert({ MaskingLayers::White, maskNode{ {Locus::KIT, Locus::Leopard, Locus::MLeopard, Locus::FrameOvero, Locus::SplashWhite} } });
-	maskingOrder.insert({ MaskingLayers::Dilution, maskNode{ {Locus::Agouti, Locus::Cream, Locus::Dun, Locus::Silver, Locus::Champange, Locus::Pearl, Locus::Sooty, Locus::Pangare, Locus::Flaxen} } });
-	maskingOrder.insert({ MaskingLayers::Base, maskNode{ {Locus::Extension} } });
+void epistasisGraphConstructor() {
+	
 }
 
 /*
@@ -278,38 +241,7 @@ void getPhenotype(const Horse& h) {
 	std::cout << "   " << "Phenotype: ";
 
 	// raw loops, probably something can be done here
-	for (const auto& [layer, maskingNode] : maskingOrder) {
-		if (layer == MaskingLayers::Gray) {
-			std::cout << "Gray" << std::endl;
-			return;
-		} else if (layer == MaskingLayers::White) {
-			
-		} else if (layer == MaskingLayers::Dilution) {
-			Gene a = h.genotype.getGene(Locus::Agouti);
-			Gene e = h.genotype.getGene(Locus::Agouti);
-			for (const auto& locus : maskingNode.Loci) {
-				LocusNode ln = LocusDependencies.at(locus);
-				for (const auto& parent : ln.dependencies) {
-					if (locus == Locus::Agouti && parent == Locus::Extension) {
-						if (a.isDominantPresent() && e.isDominantPresent()) {
-							std::cout << "Bay" << std::endl;
-						}
-					}
-				}
-			}
-		} else {
-			Gene a = h.genotype.getGene(Locus::Agouti);
-			Gene e = h.genotype.getGene(Locus::Agouti);
-
-			if (a.isRecessivePresent() && e.isDominantPresent()) {
-				std::cout << "Black" << std::endl;
-			}
-
-			if (e.isRecessivePresent()) {
-				std::cout << "Chestnut" << std::endl;
-			}
-		}
-	}
+	
 }
 
 static Punnett<Gene> generatePunnett(const Gene& sAlleles, const Gene& dAlleles) {
@@ -361,8 +293,7 @@ Gene generateOffspringGene(
 
 Genotype<Locus> generateOffspringGenotype(
 	const Genotype<Locus>& sGenotype,
-	const Genotype<Locus>& dGenotype,
-	const std::vector<Locus> L) {
+	const Genotype<Locus>& dGenotype) {
 
 	// consider lambda here
 	std::unordered_map<Locus, Gene> foalGenes;
@@ -380,7 +311,7 @@ Horse generateOffspring(const Horse& sire, const Horse& dam) {
 	}
 
 	std::vector<Locus> L = { Locus::Extension, Locus::Agouti };
-	auto foalGenotype = generateOffspringGenotype(sire.genotype, dam.genotype, L);
+	auto foalGenotype = generateOffspringGenotype(sire.genotype, dam.genotype);
 	Horse offspring{ 'U', foalGenotype }; // 'U' for unknown sex
 	return offspring;
 }
