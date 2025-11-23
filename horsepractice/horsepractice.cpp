@@ -226,22 +226,82 @@ struct Horse {
 
 // Locus Graph Related
 void epistasisGraphConstructor() {
-	
+	epistasisDependencies.insert({
+		Locus::Extension, { 
+			{}, 
+			MaskLayers::Base 
+		}
+	});
+	epistasisDependencies.insert({
+		Locus::Agouti, {
+			{ Locus::Extension }, 
+			MaskLayers::Dilution
+		}
+	});
+	epistasisDependencies.insert({
+		Locus::KIT, {
+			{ },
+			MaskLayers::White
+		}
+	});
+	epistasisDependencies.insert({
+		Locus::Silver, {
+			{ },
+			MaskLayers::Dilution
+		}
+	});
+	epistasisDependencies.insert({
+		Locus::Cream, {
+			{ Locus::Agouti },
+			MaskLayers::Dilution
+		}
+	});
+	epistasisDependencies.insert({
+		Locus::Pearl, {
+			{ },
+			MaskLayers::Dilution
+		}
+	});
+}
+
+std::unordered_map<MaskLayers, std::vector<Locus>> createMaskBuckets(
+	std::vector<Locus>& lociToSort,
+	const EpistasisGraph& epGraph)
+{
+
+	std::sort(lociToSort.begin(), lociToSort.end(),
+		[&epGraph](Locus a, Locus b) {
+			const EpistasisNode& nodeA = epGraph.at(a);
+			const EpistasisNode& nodeB = epGraph.at(b);
+
+			// lower enum number means higher on the mask. 
+			return static_cast<int>(nodeA.maskLayer) < static_cast<int>(nodeB.maskLayer);
+		}
+	);
+
+	std::unordered_map<MaskLayers, std::vector<Locus>> maskBuckets;
+	for (const Locus& locus : lociToSort) {
+		MaskLayers currentLayer = epGraph.at(locus).maskLayer;
+		maskBuckets[currentLayer].push_back(locus);
+	}
+
+	return maskBuckets;
 }
 
 /*
 This code predicts what the horse will look like using it's genotype
-
-First, it loops through masks to see if those are present.
-If Gray is, then the horse is gray and it wont continue.
-For KIT it just adds a white modifier mask on top
-If there are dilutions then it will not proceed to base layer
 */
 void getPhenotype(const Horse& h) {
 	std::cout << "   " << "Phenotype: ";
+	std::unordered_map<MaskLayers, std::vector<Locus>> maskBuckets = createMaskBuckets(h.genotype, epistasisDependencies);
 
-	// raw loops, probably something can be done here
-	
+	for (const auto& [maskLayer, loci] : maskBuckets) {
+		if (maskLayer == MaskLayers::White) {
+			for (const auto& locus : loci) {
+				
+			}
+		}
+	};
 }
 
 static Punnett<Gene> generatePunnett(const Gene& sAlleles, const Gene& dAlleles) {
