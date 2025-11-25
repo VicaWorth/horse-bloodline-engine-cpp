@@ -11,6 +11,8 @@
 #include <random>
 #include <array>
 #include <cctype>
+#include <functional>
+#include <set>
 
 class InvalidAlleles : public std::exception {
 private:
@@ -25,7 +27,7 @@ public:
 
 enum class MaskLayers {
 	Gray,
-	White,
+	WhiteSpotting,
 	Dilution,
 	Base 
 };
@@ -57,10 +59,52 @@ enum class Locus {
 	Unknown
 };
 
+enum class BaseCoat { Chestnut, Black, Bay, SealBrown, WildBay };
+enum class Dilution { Cream, Pearl, Dun, Silver, Champagne };
+enum class WhiteSpotting  { Roan, Tobiano, Sabino1 };
+enum class Gray { Gray };
+
+class Phenotype {
+	BaseCoat baseCoat;
+	std::multiset<Dilution> dilutions;
+	std::multiset<WhiteSpotting> whiteSpotting;
+	std::multiset<Gray> gray;
+
+	bool hasModifiers() {
+		return (!dilutions.empty() || !whiteSpotting.empty());
+	}
+
+	std::string baseCoatToString() const {
+		switch (baseCoat) {
+		case BaseCoat::Chestnut:   return "Chestnut";
+		case BaseCoat::Black:      return "Black";
+		case BaseCoat::Bay:        return "Bay";
+		case BaseCoat::SealBrown:  return "Seal Brown";
+		case BaseCoat::WildBay:    return "Wild Bay";
+		default:                   return "Unknown";
+		}
+	}
+
+	std::string phenotypeToName() {		
+		std::string name = baseCoatToString();
+
+		if (hasModifiers()) {
+			if (baseCoat == BaseCoat::Bay && dilutions.count(Dilution::Cream)) {
+				name = "Buckskin";
+			}
+		}
+
+		if (!gray.empty()) {
+			name = "Gray (on " + name + ")";
+		}
+	}
+};
+
 struct EpistasisNode {
 	//Locus id;
 	std::vector<Locus> locusParents;
 	MaskLayers maskLayer;
+	std::function<std::string(const Genotype<Locus>&)> resolver;
 };
 
 using EpistasisGraph = std::unordered_map<Locus, EpistasisNode>;
@@ -225,23 +269,44 @@ struct Horse {
 };
 
 // Locus Graph Related
+std::function<std::string(const Genotype<Locus>&)>
+createGeneRule(
+	Locus locusToCheck,
+	bool (Gene::* predicate)() const, // pulling the Gene member functions here to use for phenotype expression
+	std::string resultIfTrue,
+	std::string resultIfFalse)
+{
+	return [locusToCheck, predicate, resultIfTrue, resultIfFalse](const Genotype<Locus>& genotype) -> std::string {
+		const Gene& gene = genotype.getGene(locusToCheck);
+
+		// example: gene.isDominantPresent() as the predicate
+		if (std::invoke(predicate, gene)) {
+			return resultIfTrue;
+		} else {
+			return resultIfFalse;
+		}
+	};
+}
+
 void epistasisGraphConstructor() {
 	epistasisDependencies.insert({
-		Locus::Extension, { 
-			{}, 
-			MaskLayers::Base 
+		Locus::Extension, {
+			{},
+			MaskLayers::Base,
+			createGeneRule(Locus::Extension, &Gene::isRecessivePresent, "Chestnut")
 		}
 	});
 	epistasisDependencies.insert({
 		Locus::Agouti, {
 			{ Locus::Extension }, 
-			MaskLayers::Dilution
+			MaskLayers::Dilution,
+			createGeneRule(Locus::Extension, &Gene::isDominantPresent, "Bay")
 		}
 	});
 	epistasisDependencies.insert({
 		Locus::KIT, {
 			{ },
-			MaskLayers::White
+			MaskLayers::WhiteSpotting
 		}
 	});
 	epistasisDependencies.insert({
@@ -264,7 +329,8 @@ void epistasisGraphConstructor() {
 	});
 }
 
-std::unordered_map<MaskLayers, std::vector<Locus>> createMaskBuckets(
+std::unordered_map<MaskLayers, std::vector<Locus>> 
+createMaskBuckets(
 	std::vector<Locus>& lociToSort,
 	const EpistasisGraph& epGraph)
 {
@@ -296,7 +362,7 @@ void getPhenotype(const Horse& h) {
 	std::unordered_map<MaskLayers, std::vector<Locus>> maskBuckets = createMaskBuckets(h.genotype, epistasisDependencies);
 
 	for (const auto& [maskLayer, loci] : maskBuckets) {
-		if (maskLayer == MaskLayers::White) {
+		if (maskLayer == MaskLayers::WhiteSpotting) {
 			for (const auto& locus : loci) {
 				
 			}
