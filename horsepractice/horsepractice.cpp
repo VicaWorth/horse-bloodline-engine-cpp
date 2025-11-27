@@ -25,12 +25,21 @@ public:
 	}
 };
 
-enum class MaskLayers {
-	Gray,
-	WhiteSpotting,
-	Dilution,
-	Base 
+class NonexistantAlleles : public std::exception {
+private:
+	std::string message;
+public:
+	NonexistantAlleles(const std::string& msg) : message(msg) {}
+
+	virtual const char* what() const noexcept override {
+		return message.c_str();
+	}
 };
+
+class Gene;
+template <typename T> class Genotype;
+struct Phenotype;
+struct EpistasisNode;
 
 enum class Dominance {
 	Dominant,
@@ -40,75 +49,56 @@ enum class Dominance {
 };
 
 enum class Locus {
+	Root,
 	Extension,
 	Agouti,
 	KIT,
 	Silver,
 	Cream,
-	Pearl,
+	Pearl, // apparenty pearl is on the same locus at Cream so this will have to be updated
 	Dun,
-	Champange,
+	Champagne,
 	Gray,
 	SplashWhite,
 	FrameOvero,
+	Leopard,
+	MLeopard,
 	Flaxen,
 	Pangare,
 	Sooty,
-	Leopard,
-	MLeopard,
 	Unknown
 };
 
-enum class BaseCoat { Chestnut, Black, Bay, SealBrown, WildBay };
-enum class Dilution { Cream, Pearl, Dun, Silver, Champagne };
-enum class WhiteSpotting  { Roan, Tobiano, Sabino1 };
-enum class Gray { Gray };
+struct EpistasisNode {
+	std::function<bool(const Gene&)> entryCondition;
+	std::vector<Locus> children;
+	std::function<bool(const Genotype<Locus>&, Phenotype&)> resolver;
+};
 
-class Phenotype {
-	BaseCoat baseCoat;
-	std::multiset<Dilution> dilutions;
-	std::multiset<WhiteSpotting> whiteSpotting;
-	std::multiset<Gray> gray;
+struct Phenotype {
+	std::unordered_map<std::string, bool> activeTraits;
 
-	bool hasModifiers() {
-		return (!dilutions.empty() || !whiteSpotting.empty());
+	void flipSwitch(const std::string& traitName) {
+		activeTraits[traitName] = true;
 	}
 
-	std::string baseCoatToString() const {
-		switch (baseCoat) {
-		case BaseCoat::Chestnut:   return "Chestnut";
-		case BaseCoat::Black:      return "Black";
-		case BaseCoat::Bay:        return "Bay";
-		case BaseCoat::SealBrown:  return "Seal Brown";
-		case BaseCoat::WildBay:    return "Wild Bay";
-		default:                   return "Unknown";
+	bool isSwitchedOn(const std::string& traitName) const {
+		if (activeTraits.count(traitName)) {
+			return activeTraits.at(traitName);
 		}
+		return false;
 	}
 
-	std::string phenotypeToName() {		
-		std::string name = baseCoatToString();
-
-		if (hasModifiers()) {
-			if (baseCoat == BaseCoat::Bay && dilutions.count(Dilution::Cream)) {
-				name = "Buckskin";
+	void printPhenotypeDescription() {
+		for (const auto& pair : activeTraits) {
+			std::cout << pair.first << " all " << std::endl;
+			if (pair.second == true) {
+				std::cout << pair.first << " ";
 			}
 		}
-
-		if (!gray.empty()) {
-			name = "Gray (on " + name + ")";
-		}
+		std::cout << std::endl;
 	}
 };
-
-struct EpistasisNode {
-	//Locus id;
-	std::vector<Locus> locusParents;
-	MaskLayers maskLayer;
-	std::function<std::string(const Genotype<Locus>&)> resolver;
-};
-
-using EpistasisGraph = std::unordered_map<Locus, EpistasisNode>;
-EpistasisGraph epistasisDependencies;
 
 struct Allele {
 	std::string symbol; // Like 'A' or "Sty"
@@ -118,13 +108,25 @@ struct Allele {
 	std::unordered_map<std::string, Locus> symbolToLocusTable = {
 		{"E", Locus::Extension},
 		{"A", Locus::Agouti},
+		{"A+", Locus::Agouti},
+		{"AT", Locus::Agouti},
 		{"RN", Locus::KIT},
 		{"TO", Locus::KIT},
 		{"SB1", Locus::KIT},
 		{"Z", Locus::Silver},
 		{"CR", Locus::Cream},
-		{"NCR", Locus::Cream},
-		{"PRL", Locus::Pearl} // add others later
+		{"PRL", Locus::Pearl},
+		{"DUN", Locus::Dun},
+		{"CH", Locus::Champagne},
+		{"G", Locus::Gray},
+		{"SW", Locus::SplashWhite},
+		{"O", Locus::FrameOvero},
+		{"LP", Locus::Leopard},
+		{"PATN1", Locus::MLeopard},
+		{"F", Locus::Flaxen},
+		{"P", Locus::Pangare},
+		{"STY", Locus::Sooty},
+		{"U", Locus::Unknown} // add others later
 	};
 
 	Allele(std::string symbol) 
@@ -191,6 +193,22 @@ public:
 		return (alleles.first.symbol + alleles.second.symbol);
 	};
 
+	constexpr bool hasAllele(std::string a) const {
+		return (alleles.first.symbol == a);
+	};
+
+	constexpr bool hasAlleleA_plus() const {
+		return (alleles.first.symbol == "A+");
+	};
+
+	constexpr bool hasAlleleA() const {
+		return (alleles.first.symbol == "A");
+	};
+
+	constexpr bool hasAlleleAt() const {
+		return (alleles.first.symbol == "At");
+	};
+
 	constexpr bool isDominantPresent() const {
 		return (alleles.first.dominance == Dominance::Dominant);
 	};
@@ -237,8 +255,38 @@ public:
 	auto begin() const { return m_genotype.begin(); }
 	auto end()   const { return m_genotype.end(); }
 
+	std::string locusToString(Locus l) const noexcept {
+		switch (l) {
+		case Locus::Root:         return "Root";
+		case Locus::Extension:    return "Extension";
+		case Locus::Agouti:       return "Agouti";
+		case Locus::KIT:          return "KIT";
+		case Locus::Silver:       return "Silver";
+		case Locus::Cream:        return "Cream";
+		case Locus::Pearl:        return "Pearl";
+		case Locus::Dun:          return "Dun";
+		case Locus::Champagne:    return "Champagne";
+		case Locus::Gray:         return "Gray";
+		case Locus::SplashWhite:  return "SplashWhite";
+		case Locus::FrameOvero:   return "FrameOvero";
+		case Locus::Flaxen:       return "Flaxen";
+		case Locus::Pangare:      return "Pangare";
+		case Locus::Sooty:        return "Sooty";
+		case Locus::Leopard:      return "Leopard";
+		case Locus::MLeopard:     return "MLeopard";
+		case Locus::Unknown:      return "Unknown";
+		default:                  return "[[Unhandled Locus Value]]";
+		}
+	}
+
 	Gene getGene(const Locus l) const {
-		return m_genotype.at(l);
+		try {
+			return m_genotype.at(l);
+		}
+		catch (const std::out_of_range& oor) {
+			std::string e = "Attempted to access non-existent gene from locus: " + locusToString(l);
+			throw NonexistantAlleles(e);
+		}
 	}
 };
 
@@ -269,105 +317,143 @@ struct Horse {
 };
 
 // Locus Graph Related
-std::function<std::string(const Genotype<Locus>&)>
-createGeneRule(
-	Locus locusToCheck,
-	bool (Gene::* predicate)() const, // pulling the Gene member functions here to use for phenotype expression
-	std::string resultIfTrue,
-	std::string resultIfFalse)
-{
-	return [locusToCheck, predicate, resultIfTrue, resultIfFalse](const Genotype<Locus>& genotype) -> std::string {
-		const Gene& gene = genotype.getGene(locusToCheck);
+using Rule = std::pair<bool (Gene::*)(void) const, std::string>;
 
-		// example: gene.isDominantPresent() as the predicate
-		if (std::invoke(predicate, gene)) {
-			return resultIfTrue;
-		} else {
-			return resultIfFalse;
+std::function<bool(const Genotype<Locus>&, Phenotype&)>
+createGeneRule(
+	Locus locus, 
+	const std::vector<Rule>& rules, 
+	const std::string& defaultPhenotype = "")
+{
+	return [locus, rules, defaultPhenotype](const Genotype<Locus>& genotype, Phenotype& phenotype) {
+		const Gene& gene = genotype.getGene(locus);
+
+		// Iterates thru all 'if,ifelse,else'
+		for (const auto& [predicate, phenotypeName] : rules) {
+			if (std::invoke(predicate, gene)) {
+				phenotype.flipSwitch(phenotypeName);
+				return true;
+			}
 		}
+
+		// If no rules apply, go to else case 
+		if (!defaultPhenotype.empty()) {
+			phenotype.flipSwitch(defaultPhenotype);
+			return true;
+		}
+		return false;
 	};
 }
 
+using EpistasisGraph = std::unordered_map<Locus, EpistasisNode>;
+EpistasisGraph epistasisGraph;
+
 void epistasisGraphConstructor() {
-	epistasisDependencies.insert({
-		Locus::Extension, {
+	//Root
+	epistasisGraph.insert({
+	Locus::Root,
+	{
+		[](const Gene&) { return true; },
+		{ Locus::Extension/*, Locus::SplashWhite, Locus::FrameOvero, Locus::Sooty, Locus::Gray, Locus::KIT, Locus::Pearl, Locus::Flaxen, Locus::Pangare*/},
+		std::function<bool(const Genotype<Locus>&, Phenotype&)>()
+	}
+	});
+
+	// Extension
+	epistasisGraph.insert({
+	Locus::Extension,
+	{ 
+		[](const Gene& parentGene) { return true; },
+		{ Locus::Agouti,/* Locus::Champagne, Locus::Dun, Locus::Cream,*/ Locus::Silver},
+		createGeneRule(Locus::Extension, {
+			{ &Gene::isRecessivePresent, "Chestnut" }
+		},
+			"Black")
+		}
+	});
+
+	// Agouti
+	epistasisGraph.insert({
+		Locus::Agouti,
+		{
+			[](const Gene& parentGene) { return parentGene.isDominantPresent(); },
+			{ /* Locus::Champagne, Locus::Dun, Locus::Cream */ },
+			createGeneRule(Locus::Agouti, {
+				{ &Gene::hasAlleleA_plus, "Wild Bay" },
+				{ &Gene::hasAlleleA,     "Bay"      }, 
+				{ &Gene::hasAlleleAt,    "Seal Brown" }
+			})
+		}
+	});
+
+	// Silver
+	epistasisGraph.insert({
+		Locus::Silver,
+		{
+			[](const Gene& parentGene) { return parentGene.isDominantPresent(); },
 			{},
-			MaskLayers::Base,
-			createGeneRule(Locus::Extension, &Gene::isRecessivePresent, "Chestnut")
-		}
-	});
-	epistasisDependencies.insert({
-		Locus::Agouti, {
-			{ Locus::Extension }, 
-			MaskLayers::Dilution,
-			createGeneRule(Locus::Extension, &Gene::isDominantPresent, "Bay")
-		}
-	});
-	epistasisDependencies.insert({
-		Locus::KIT, {
-			{ },
-			MaskLayers::WhiteSpotting
-		}
-	});
-	epistasisDependencies.insert({
-		Locus::Silver, {
-			{ },
-			MaskLayers::Dilution
-		}
-	});
-	epistasisDependencies.insert({
-		Locus::Cream, {
-			{ Locus::Agouti },
-			MaskLayers::Dilution
-		}
-	});
-	epistasisDependencies.insert({
-		Locus::Pearl, {
-			{ },
-			MaskLayers::Dilution
+			createGeneRule(Locus::Silver, {
+				{ &Gene::isDominantPresent, "Silver"}
+			})
 		}
 	});
 }
 
-std::unordered_map<MaskLayers, std::vector<Locus>> 
-createMaskBuckets(
-	std::vector<Locus>& lociToSort,
-	const EpistasisGraph& epGraph)
+static bool evaluateNode(
+	Locus currentNode,
+	const Gene& parentGene, // The context from the parent
+	const Genotype<Locus>& genotype,
+	Phenotype& phenotype)
 {
 
-	std::sort(lociToSort.begin(), lociToSort.end(),
-		[&epGraph](Locus a, Locus b) {
-			const EpistasisNode& nodeA = epGraph.at(a);
-			const EpistasisNode& nodeB = epGraph.at(b);
-
-			// lower enum number means higher on the mask. 
-			return static_cast<int>(nodeA.maskLayer) < static_cast<int>(nodeB.maskLayer);
-		}
-	);
-
-	std::unordered_map<MaskLayers, std::vector<Locus>> maskBuckets;
-	for (const Locus& locus : lociToSort) {
-		MaskLayers currentLayer = epGraph.at(locus).maskLayer;
-		maskBuckets[currentLayer].push_back(locus);
+	if (epistasisGraph.find(currentNode) == epistasisGraph.end()) {
+		std::string locusName = genotype.locusToString(currentNode);
+		throw NonexistantAlleles("Epistasis Graph is missing logic for Locus: " + locusName);
 	}
 
-	return maskBuckets;
+
+	const EpistasisNode& node = epistasisGraph.at(currentNode);
+
+	if (!node.entryCondition(parentGene)) {
+		return false; 
+	}
+
+	bool childFlippedASwitch = false;
+
+	const Gene& contextForChildren = (currentNode == Locus::Root)
+		? parentGene 
+		: genotype.getGene(currentNode);
+
+	for (Locus childLocus : node.children) {
+		childFlippedASwitch = evaluateNode(childLocus, contextForChildren, genotype, phenotype) || childFlippedASwitch;
+	}
+
+	if (childFlippedASwitch) {
+		return true;
+	} else {
+		if (node.resolver) {
+			return node.resolver(genotype, phenotype);
+		}
+	}
+
+	return childFlippedASwitch;
 }
 
 /*
 This code predicts what the horse will look like using it's genotype
 */
-void getPhenotype(const Horse& h) {
-	std::cout << "   " << "Phenotype: ";
-	std::unordered_map<MaskLayers, std::vector<Locus>> maskBuckets = createMaskBuckets(h.genotype, epistasisDependencies);
+Phenotype getPhenotype(
+	const Genotype<Locus>& genotype, 
+	const EpistasisGraph& graph) 
+{
+	Phenotype phenotype; 
+	
+	Allele dummyAllele{"U"};
+	Gene root(dummyAllele, dummyAllele);
 
-	for (const auto& [maskLayer, loci] : maskBuckets) {
-		if (maskLayer == MaskLayers::WhiteSpotting) {
-			for (const auto& locus : loci) {
-				
-			}
-		}
-	};
+	evaluateNode(Locus::Root, root, genotype, phenotype);
+
+	return phenotype;
 }
 
 static Punnett<Gene> generatePunnett(const Gene& sAlleles, const Gene& dAlleles) {
@@ -444,31 +530,58 @@ Horse generateOffspring(const Horse& sire, const Horse& dam) {
 
 int main()
 {
+	epistasisGraphConstructor();
+	// --- HORSE CREATION ---
 	std::cout << "   " << "Getting horses" << std::endl;
-	auto sireAE = Gene(Allele("e"), Allele("E"));
-	auto damAE  = Gene(Allele("E"), Allele("e"));
-	auto sireAA = Gene(Allele("A"), Allele("a"));
-	auto damAA = Gene(Allele("a"), Allele("A"));
-	auto sireG = Genotype<Locus>(0, { {Locus::Extension, sireAE}, {Locus::Agouti, sireAA} });
-	auto damG  = Genotype<Locus>(0, { {Locus::Extension, damAE}, {Locus::Agouti, damAA} });
+
+	// To create a Genotype, you must first create the map
+	std::unordered_map<Locus, Gene> sireGenes = {
+		{ Locus::Extension, Gene(Allele("E"), Allele("E")) },
+		{ Locus::Agouti,    Gene(Allele("a"), Allele("a")) },
+		{ Locus::Silver,    Gene(Allele("Z"), Allele("Z")) }
+	};
+	Genotype<Locus> sireG(0, std::move(sireGenes));
+
+	std::unordered_map<Locus, Gene> damGenes = {
+		{ Locus::Extension, Gene(Allele("E"), Allele("e")) },
+		{ Locus::Agouti,    Gene(Allele("a"), Allele("a")) },
+		{ Locus::Silver,    Gene(Allele("Z"), Allele("Z")) }
+	};
+	Genotype<Locus> damG(0, std::move(damGenes));
 
 	auto sire = Horse('M', sireG);
-	auto dam  = Horse('F', damG);
+	auto dam = Horse('F', damG);
 
+	// --- GENOTYPE DISPLAY ---
 	std::cout << "Sire's Genotype" << std::endl;
 	sire.showGenes(Locus::Extension);
 	sire.showGenes(Locus::Agouti);
+	sire.showGenes(Locus::Silver);
 
 	std::cout << "Dam's Genotype" << std::endl;
 	dam.showGenes(Locus::Extension);
 	dam.showGenes(Locus::Agouti);
+	dam.showGenes(Locus::Silver);
 
-	std::cout << "Offsprings's Genotype" << std::endl;
+	// --- OFFSPRING GENERATION & PHENOTYPE RESOLUTION ---
+	std::cout << "Offspring's Genotype" << std::endl;
 	auto offspring = generateOffspring(sire, dam);
 	offspring.showGenes(Locus::Extension);
 	offspring.showGenes(Locus::Agouti);
+	offspring.showGenes(Locus::Silver);
 
-	getPhenotype(offspring);
+	try {
+		Phenotype finalPhenotype = getPhenotype(offspring.genotype, epistasisGraph);
+
+		std::cout << "Offspring's Phenotype Traits:" << std::endl;
+		finalPhenotype.printPhenotypeDescription();
+	}
+	catch (const NonexistantAlleles& e) {
+		std::cerr << "\nPHENOTYPE ERROR: " << e.what() << std::endl;
+	}
+	catch (const std::exception& e) {
+		std::cerr << "\nAn unexpected error occurred: " << e.what() << std::endl;
+	}
 
 	return 0;
 }
