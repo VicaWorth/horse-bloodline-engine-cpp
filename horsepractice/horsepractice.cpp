@@ -67,11 +67,15 @@ enum class Locus {
 	Pangare,
 	Sooty,
 	Unknown
-};
+}; 
 
+struct GraphEdge {
+	Locus locus;
+	bool inhibitsParent; // If true child expresses, parent does not, false and both express
+};
 struct EpistasisNode {
 	std::function<bool(const Gene&)> entryCondition;
-	std::vector<Locus> children;
+	std::vector<GraphEdge> children; 
 	std::function<bool(const Genotype<Locus>&, Phenotype&)> resolver;
 };
 
@@ -83,8 +87,8 @@ struct Phenotype {
 	}
 
 	bool isSwitchedOn(const std::string& traitName) const {
-		if (activeTraits.count(traitName)) {
-			return activeTraits.at(traitName);
+		if (activeTraits.count(traitName) > 0) {
+			return true;
 		}
 		return false;
 	}
@@ -354,7 +358,9 @@ void epistasisGraphConstructor() {
 	Locus::Root,
 	{
 		[](const Gene&) { return true; },
-		{ Locus::Extension/*, Locus::SplashWhite, Locus::FrameOvero, Locus::Sooty, Locus::Gray, Locus::KIT, Locus::Pearl, Locus::Flaxen, Locus::Pangare*/},
+		{
+			{ Locus::Extension, false }
+		},
 		std::function<bool(const Genotype<Locus>&, Phenotype&)>()
 	}
 	});
@@ -364,7 +370,10 @@ void epistasisGraphConstructor() {
 	Locus::Extension,
 	{ 
 		[](const Gene& parentGene) { return true; },
-		{ Locus::Agouti,/* Locus::Champagne, Locus::Dun, Locus::Cream,*/ Locus::Silver},
+		{
+			{ Locus::Agouti, true},
+			{ Locus::Silver, false},
+		},
 		createGeneRule(Locus::Extension, {
 			{ &Gene::isRecessivePresent, "Chestnut" }
 		},
@@ -377,7 +386,7 @@ void epistasisGraphConstructor() {
 		Locus::Agouti,
 		{
 			[](const Gene& parentGene) { return parentGene.isDominantPresent(); },
-			{ /* Locus::Champagne, Locus::Dun, Locus::Cream */ },
+			{  },
 			createGeneRule(Locus::Agouti, {
 				{ &Gene::hasAlleleA_plus, "Wild Bay" },
 				{ &Gene::hasAlleleA,     "Bay"      }, 
@@ -391,7 +400,7 @@ void epistasisGraphConstructor() {
 		Locus::Silver,
 		{
 			[](const Gene& parentGene) { return parentGene.isDominantPresent(); },
-			{},
+			{ },
 			createGeneRule(Locus::Silver, {
 				{ &Gene::isDominantPresent, "Silver"}
 			})
@@ -411,7 +420,6 @@ static bool evaluateNode(
 		throw NonexistantAlleles("Epistasis Graph is missing logic for Locus: " + locusName);
 	}
 
-
 	const EpistasisNode& node = epistasisGraph.at(currentNode);
 
 	if (!node.entryCondition(parentGene)) {
@@ -420,12 +428,12 @@ static bool evaluateNode(
 
 	bool childFlippedASwitch = false;
 
-	const Gene& contextForChildren = (currentNode == Locus::Root)
+	const Gene& geneForChildren = (currentNode == Locus::Root)
 		? parentGene 
 		: genotype.getGene(currentNode);
 
 	for (Locus childLocus : node.children) {
-		childFlippedASwitch = evaluateNode(childLocus, contextForChildren, genotype, phenotype) || childFlippedASwitch;
+		childFlippedASwitch = evaluateNode(childLocus, geneForChildren, genotype, phenotype) || childFlippedASwitch;
 	}
 
 	if (childFlippedASwitch) {
