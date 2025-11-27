@@ -95,7 +95,7 @@ struct Phenotype {
 
 	void printPhenotypeDescription() {
 		for (const auto& pair : activeTraits) {
-			std::cout << pair.first << " all " << std::endl;
+			//std::cout << pair.first << " all " << std::endl;
 			if (pair.second == true) {
 				std::cout << pair.first << " ";
 			}
@@ -373,6 +373,7 @@ void epistasisGraphConstructor() {
 		{
 			{ Locus::Agouti, true},
 			{ Locus::Silver, false},
+			{ Locus::Flaxen, false}
 		},
 		createGeneRule(Locus::Extension, {
 			{ &Gene::isRecessivePresent, "Chestnut" }
@@ -406,45 +407,64 @@ void epistasisGraphConstructor() {
 			})
 		}
 	});
+
+	// Flaxen
+	epistasisGraph.insert({
+		Locus::Flaxen,
+		{
+			[](const Gene& parentGene) { return parentGene.isRecessivePresent(); },
+			{ },
+			createGeneRule(Locus::Flaxen, {
+				{ &Gene::isRecessivePresent, "Flaxen"}
+			})
+		}
+	});
 }
 
 static bool evaluateNode(
 	Locus currentNode,
-	const Gene& parentGene, // The context from the parent
+	const Gene& parentGene,
 	const Genotype<Locus>& genotype,
 	Phenotype& phenotype)
 {
-
+	// 1. Safety Check
 	if (epistasisGraph.find(currentNode) == epistasisGraph.end()) {
-		std::string locusName = genotype.locusToString(currentNode);
-		throw NonexistantAlleles("Epistasis Graph is missing logic for Locus: " + locusName);
+		throw NonexistantAlleles("Graph logic missing for: " + genotype.locusToString(currentNode));
 	}
 
 	const EpistasisNode& node = epistasisGraph.at(currentNode);
 
+	// 2. Entry Condition (e.g., must be dominant E to process Agouti)
 	if (!node.entryCondition(parentGene)) {
-		return false; 
+		return false;
 	}
 
-	bool childFlippedASwitch = false;
+	bool parentIsInhibited = false;
+	bool branchIsActive = false;
 
-	const Gene& geneForChildren = (currentNode == Locus::Root)
-		? parentGene 
+	const Gene& contextForChildren = (currentNode == Locus::Root)
+		? parentGene
 		: genotype.getGene(currentNode);
 
-	for (Locus childLocus : node.children) {
-		childFlippedASwitch = evaluateNode(childLocus, geneForChildren, genotype, phenotype) || childFlippedASwitch;
-	}
+	for (const GraphEdge& edge : node.children) {
+		bool childExpressed = evaluateNode(edge.locus, contextForChildren, genotype, phenotype);
 
-	if (childFlippedASwitch) {
-		return true;
-	} else {
-		if (node.resolver) {
-			return node.resolver(genotype, phenotype);
+		if (childExpressed) {
+			branchIsActive = true;
+
+			if (edge.inhibitsParent) {
+				parentIsInhibited = true;
+			}
 		}
 	}
 
-	return childFlippedASwitch;
+	if (!parentIsInhibited && node.resolver) {
+		if (node.resolver(genotype, phenotype)) {
+			branchIsActive = true;
+		}
+	}
+
+	return branchIsActive;
 }
 
 /*
@@ -544,16 +564,18 @@ int main()
 
 	// To create a Genotype, you must first create the map
 	std::unordered_map<Locus, Gene> sireGenes = {
-		{ Locus::Extension, Gene(Allele("E"), Allele("E")) },
+		{ Locus::Extension, Gene(Allele("e"), Allele("e")) },
 		{ Locus::Agouti,    Gene(Allele("a"), Allele("a")) },
-		{ Locus::Silver,    Gene(Allele("Z"), Allele("Z")) }
+		{ Locus::Silver,    Gene(Allele("Z"), Allele("Z")) },
+		{ Locus::Flaxen,    Gene(Allele("f"), Allele("f")) }
 	};
 	Genotype<Locus> sireG(0, std::move(sireGenes));
 
 	std::unordered_map<Locus, Gene> damGenes = {
 		{ Locus::Extension, Gene(Allele("E"), Allele("e")) },
 		{ Locus::Agouti,    Gene(Allele("a"), Allele("a")) },
-		{ Locus::Silver,    Gene(Allele("Z"), Allele("Z")) }
+		{ Locus::Silver,    Gene(Allele("z"), Allele("Z")) },
+		{ Locus::Flaxen,    Gene(Allele("f"), Allele("f")) }
 	};
 	Genotype<Locus> damG(0, std::move(damGenes));
 
@@ -565,11 +587,13 @@ int main()
 	sire.showGenes(Locus::Extension);
 	sire.showGenes(Locus::Agouti);
 	sire.showGenes(Locus::Silver);
+	sire.showGenes(Locus::Flaxen);
 
 	std::cout << "Dam's Genotype" << std::endl;
 	dam.showGenes(Locus::Extension);
 	dam.showGenes(Locus::Agouti);
 	dam.showGenes(Locus::Silver);
+	sire.showGenes(Locus::Flaxen);
 
 	// --- OFFSPRING GENERATION & PHENOTYPE RESOLUTION ---
 	std::cout << "Offspring's Genotype" << std::endl;
@@ -577,6 +601,7 @@ int main()
 	offspring.showGenes(Locus::Extension);
 	offspring.showGenes(Locus::Agouti);
 	offspring.showGenes(Locus::Silver);
+	offspring.showGenes(Locus::Flaxen);
 
 	try {
 		Phenotype finalPhenotype = getPhenotype(offspring.genotype, epistasisGraph);
