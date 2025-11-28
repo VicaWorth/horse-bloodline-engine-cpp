@@ -76,31 +76,29 @@ struct GraphEdge {
 struct EpistasisNode {
 	std::function<bool(const Gene&)> entryCondition;
 	std::vector<GraphEdge> children; 
-	std::function<bool(const Genotype<Locus>&, Phenotype&)> resolver;
+	std::function<void(const Gene&, Phenotype&)> resolver;
 };
 
 struct Phenotype {
-	std::unordered_map<std::string, bool> activeTraits;
+	std::string name;
 
-	void flipSwitch(const std::string& traitName) {
-		activeTraits[traitName] = true;
+	// Stack of modifiers applied to the phenotype
+	using Modifier = std::function<void(std::string&)>;
+	std::vector<Modifier> modifiers;
+
+	void resolve() {
+		for (auto it = modifiers.rbegin(); it != modifiers.rend(); ++it) {
+			(*it)(name);
+		}
 	}
 
-	bool isSwitchedOn(const std::string& traitName) const {
-		if (activeTraits.count(traitName) > 0) {
-			return true;
+	void printPhenotypeDescription() const {
+		if (name.empty()) {
+			std::cout << "Unknown Phenotype" << std::endl;
 		}
-		return false;
-	}
-
-	void printPhenotypeDescription() {
-		for (const auto& pair : activeTraits) {
-			//std::cout << pair.first << " all " << std::endl;
-			if (pair.second == true) {
-				std::cout << pair.first << " ";
-			}
+		else {
+			std::cout << name << std::endl;
 		}
-		std::cout << std::endl;
 	}
 };
 
@@ -111,9 +109,9 @@ struct Allele {
 
 	std::unordered_map<std::string, Locus> symbolToLocusTable = {
 		{"E", Locus::Extension},
-		{"A", Locus::Agouti},
-		{"A+", Locus::Agouti},
-		{"AT", Locus::Agouti},
+		{"A", Locus::Agouti}, 
+		{"A+", Locus::Agouti}, // wild bay
+		{"AT", Locus::Agouti}, // seal
 		{"RN", Locus::KIT},
 		{"TO", Locus::KIT},
 		{"SB1", Locus::KIT},
@@ -188,6 +186,13 @@ public:
 		if (alleles.second.dominance == Dominance::Dominant) {
 			std::swap(alleles.first, alleles.second);
 		}
+
+		if (alleles.first.dominance == Dominance::InDominant
+			&& alleles.second.dominance == Dominance::InDominant) {
+			if (std::isupper(alleles.second.symbol[0])) {
+				std::swap(alleles.first, alleles.second);
+			}
+		}
 	}
 
 	/*Gene(const Gene& other) = default;
@@ -195,6 +200,35 @@ public:
 
 	std::string toString() const {
 		return (alleles.first.symbol + alleles.second.symbol);
+	};
+
+	// for indominant/codominant
+	constexpr int getActiveCount() const {
+		if (alleles.first.dominance != Dominance::Dominant
+			|| alleles.first.dominance != Dominance::Recessive
+			|| alleles.second.dominance != Dominance::Dominant
+			|| alleles.second.dominance != Dominance::Recessive) {
+			if (std::isupper(alleles.first.symbol[0])
+				&& std::isupper(alleles.second.symbol[0])) {
+				return 2;
+			} else if (std::isupper(alleles.first.symbol[0])
+				|| std::isupper(alleles.second.symbol[0])) {
+				return 1;
+			}
+			return 0;
+		}
+		throw InvalidAlleles("getActiveCount only works on indominant/codominant");
+	}
+
+	constexpr int getDominantCount() const {
+		if (alleles.first.dominance == Dominance::Dominant
+			&& alleles.second.dominance == Dominance::Dominant) {
+			return 2;
+		} else if (alleles.first.dominance == Dominance::Dominant
+			|| alleles.second.dominance == Dominance::Dominant) {
+			return 1;
+		}
+		return 0;
 	};
 
 	constexpr bool hasAllele(std::string a) const {
@@ -323,30 +357,32 @@ struct Horse {
 // Locus Graph Related
 using Rule = std::pair<bool (Gene::*)(void) const, std::string>;
 
-std::function<bool(const Genotype<Locus>&, Phenotype&)>
-createGeneRule(
-	Locus locus, 
-	const std::vector<Rule>& rules, 
-	const std::string& defaultPhenotype = "")
-{
-	return [locus, rules, defaultPhenotype](const Genotype<Locus>& genotype, Phenotype& phenotype) {
-		const Gene& gene = genotype.getGene(locus);
-
-		// Iterates thru all 'if,ifelse,else'
-		for (const auto& [predicate, phenotypeName] : rules) {
+std::function<void(const Gene&, Phenotype&)> createGeneRule(
+	const std::vector<Rule>& rules,
+	std::string defaultPhenotype = "")
+{	return [rules, defaultPhenotype](const Gene& gene, Phenotype& phenotype) {
+		for (const auto& [predicate, resultName] : rules) {
 			if (std::invoke(predicate, gene)) {
-				phenotype.flipSwitch(phenotypeName);
-				return true;
+				phenotype.modifiers.push_back([resultName](std::string& name) {
+					name = resultName + " " + name;
+					});
+				return;
 			}
 		}
 
-		// If no rules apply, go to else case 
+		// Default case if given
 		if (!defaultPhenotype.empty()) {
-			phenotype.flipSwitch(defaultPhenotype);
-			return true;
+			phenotype.modifiers.push_back([defaultPhenotype](std::string& name) {
+				name = defaultPhenotype + " " + name;
+			});
 		}
-		return false;
 	};
+}
+
+std::function<void(const Gene&, Phenotype&)> createGeneRule(
+	std::function<void(const Gene&, Phenotype&)> complexLogic
+) {
+	return complexLogic;
 }
 
 using EpistasisGraph = std::unordered_map<Locus, EpistasisNode>;
@@ -355,30 +391,38 @@ EpistasisGraph epistasisGraph;
 void epistasisGraphConstructor() {
 	//Root
 	epistasisGraph.insert({
-	Locus::Root,
-	{
-		[](const Gene&) { return true; },
+		Locus::Root,
 		{
-			{ Locus::Extension, false }
-		},
-		std::function<bool(const Genotype<Locus>&, Phenotype&)>()
-	}
+			[](const Gene&) { return true; },
+			{ 
+				{ Locus::Extension },
+				{ Locus::Pangare }
+			},
+			createGeneRule([](const Gene&, Phenotype& p) {
+				p.modifiers.push_back([](std::string& name) {
+					name = "";
+				});
+			})
+		}
 	});
 
 	// Extension
 	epistasisGraph.insert({
-	Locus::Extension,
-	{ 
-		[](const Gene& parentGene) { return true; },
+		Locus::Extension,
 		{
-			{ Locus::Agouti, true},
-			{ Locus::Silver, false},
-			{ Locus::Flaxen, false}
-		},
-		createGeneRule(Locus::Extension, {
-			{ &Gene::isRecessivePresent, "Chestnut" }
-		},
-			"Black")
+			[](const Gene&) { return true; },
+			{ 
+				{ Locus::Agouti }, 
+				{ Locus::Cream },
+				{ Locus::Flaxen },
+				{ Locus::Silver }
+			},
+			createGeneRule(
+				std::vector<Rule>{
+					{ &Gene::isRecessivePresent, "Chestnut" }
+				},
+				"Black"
+			)
 		}
 	});
 
@@ -387,8 +431,10 @@ void epistasisGraphConstructor() {
 		Locus::Agouti,
 		{
 			[](const Gene& parentGene) { return parentGene.isDominantPresent(); },
-			{  },
-			createGeneRule(Locus::Agouti, {
+			{ 
+				{ { Locus::Cream } }
+			},
+			createGeneRule({
 				{ &Gene::hasAlleleA_plus, "Wild Bay" },
 				{ &Gene::hasAlleleA,     "Bay"      }, 
 				{ &Gene::hasAlleleAt,    "Seal Brown" }
@@ -402,7 +448,7 @@ void epistasisGraphConstructor() {
 		{
 			[](const Gene& parentGene) { return parentGene.isDominantPresent(); },
 			{ },
-			createGeneRule(Locus::Silver, {
+			createGeneRule({
 				{ &Gene::isDominantPresent, "Silver"}
 			})
 		}
@@ -414,10 +460,56 @@ void epistasisGraphConstructor() {
 		{
 			[](const Gene& parentGene) { return parentGene.isRecessivePresent(); },
 			{ },
-			createGeneRule(Locus::Flaxen, {
+			createGeneRule({
 				{ &Gene::isRecessivePresent, "Flaxen"}
 			})
 		}
+	});
+
+	// Pangare
+	epistasisGraph.insert({
+		Locus::Pangare,
+		{
+			[](const Gene& parentGene) { return true; },
+			{ },
+			createGeneRule({
+				{ &Gene::isDominantPresent, "Pangare"}
+			})
+		}
+		});
+
+	// Cream
+	epistasisGraph.insert({
+		Locus::Cream,
+		{
+		[](const Gene& g) { return true; },
+		{ },
+		createGeneRule([](const Gene& gene, Phenotype& p) {
+			int count = gene.getActiveCount();
+			p.modifiers.push_back([count](std::string& name) {
+			auto replaceColor = [&](const std::string& target, const std::string& replacement) {
+				size_t pos = name.find(target);
+				if (pos != std::string::npos) {
+					name.replace(pos, target.length(), replacement);
+					return true;
+				}
+				return false;
+			};
+			if (count == 1) { // Single Dilute
+				if (replaceColor("Chestnut", "Palomino")) return;
+				if (replaceColor("Bay", "Buckskin")) return;
+				if (replaceColor("Black", "Smoky Black")) return;
+				if (replaceColor("Seal Brown", "Smoky Brown")) return;
+			}
+			else if (count == 2) { // Double Dilute
+				if (replaceColor("Chestnut", "Cremello")) return;
+				if (replaceColor("Bay", "Perlino")) return;
+				if (replaceColor("Black", "Smoky Cream")) return;
+				if (replaceColor("Seal Brown", "Smoky Brown")) return;
+			}
+		});
+	})
+	}
 	});
 }
 
@@ -427,14 +519,12 @@ static bool evaluateNode(
 	const Genotype<Locus>& genotype,
 	Phenotype& phenotype)
 {
-	// 1. Safety Check
 	if (epistasisGraph.find(currentNode) == epistasisGraph.end()) {
 		throw NonexistantAlleles("Graph logic missing for: " + genotype.locusToString(currentNode));
 	}
 
 	const EpistasisNode& node = epistasisGraph.at(currentNode);
 
-	// 2. Entry Condition (e.g., must be dominant E to process Agouti)
 	if (!node.entryCondition(parentGene)) {
 		return false;
 	}
@@ -459,9 +549,11 @@ static bool evaluateNode(
 	}
 
 	if (!parentIsInhibited && node.resolver) {
-		if (node.resolver(genotype, phenotype)) {
-			branchIsActive = true;
-		}
+		const Gene& geneForResolver = (currentNode == Locus::Root)
+			? parentGene
+			: genotype.getGene(currentNode);
+		node.resolver(geneForResolver, phenotype);
+		branchIsActive = true;
 	}
 
 	return branchIsActive;
@@ -481,6 +573,8 @@ Phenotype getPhenotype(
 
 	evaluateNode(Locus::Root, root, genotype, phenotype);
 
+	phenotype.resolve();
+
 	return phenotype;
 }
 
@@ -499,36 +593,16 @@ static Punnett<Gene> generatePunnett(const Gene& sAlleles, const Gene& dAlleles)
 // takes frequency map and gets weighted distribution
 // returns gene associated with that
 Gene resolvePunnettSquare(const Punnett<Gene>& p) {
-	std::unordered_map<std::string, float> frequencies(4);
-	for (auto& cell : p.punnett | std::views::join) {
-		frequencies[cell.toString()]++;
-	}
+    static std::random_device rd;
+    static std::mt19937 generator(rd());
+    
+    std::uniform_int_distribution<> distribution(0, 3);
+    int choice = distribution(generator);
 
-	std::vector<std::string> outcomes;
-	std::vector<double> weights;
-	for (const auto& [key, value] : frequencies) {
-		outcomes.push_back(key);
-		weights.push_back(static_cast<double>(value));
-	}
+    int row = choice / 2; 
+    int col = choice % 2; 
 
-	std::random_device rd;
-	std::mt19937 generator(rd());
-	std::discrete_distribution<> distribution(weights.begin(), weights.end());
-
-	std::string chosenSymbols = outcomes[distribution(generator)];
-
-	Allele a1(std::string(1, chosenSymbols[0]));
-	Allele a2(std::string(1, chosenSymbols[1]));
-
-	return Gene(a1, a2);
-}
-
-// Probably defunct
-Gene generateOffspringGene(
-	const Genotype<Locus>& sGenotype,
-	const Genotype<Locus>& dGenotype,
-	const Locus& L) {
-	return resolvePunnettSquare(generatePunnett(sGenotype.getGene(L), dGenotype.getGene(L)));
+    return p.punnett[row][col];
 }
 
 Genotype<Locus> generateOffspringGenotype(
@@ -550,7 +624,6 @@ Horse generateOffspring(const Horse& sire, const Horse& dam) {
 		throw std::invalid_argument("First horse must be male and second must be female.");
 	}
 
-	std::vector<Locus> L = { Locus::Extension, Locus::Agouti };
 	auto foalGenotype = generateOffspringGenotype(sire.genotype, dam.genotype);
 	Horse offspring{ 'U', foalGenotype }; // 'U' for unknown sex
 	return offspring;
@@ -559,49 +632,55 @@ Horse generateOffspring(const Horse& sire, const Horse& dam) {
 int main()
 {
 	epistasisGraphConstructor();
-	// --- HORSE CREATION ---
 	std::cout << "   " << "Getting horses" << std::endl;
 
-	// To create a Genotype, you must first create the map
 	std::unordered_map<Locus, Gene> sireGenes = {
-		{ Locus::Extension, Gene(Allele("e"), Allele("e")) },
-		{ Locus::Agouti,    Gene(Allele("a"), Allele("a")) },
+		{ Locus::Extension, Gene(Allele("E"), Allele("E")) },
+		{ Locus::Agouti,    Gene(Allele("A"), Allele("a")) },
 		{ Locus::Silver,    Gene(Allele("Z"), Allele("Z")) },
-		{ Locus::Flaxen,    Gene(Allele("f"), Allele("f")) }
+		{ Locus::Flaxen,    Gene(Allele("F"), Allele("f")) },
+		{ Locus::Cream,     Gene(Allele("Cr"), Allele("cr")) },
+		{ Locus::Pangare,   Gene(Allele("P"), Allele("p")) }
 	};
 	Genotype<Locus> sireG(0, std::move(sireGenes));
 
 	std::unordered_map<Locus, Gene> damGenes = {
 		{ Locus::Extension, Gene(Allele("E"), Allele("e")) },
-		{ Locus::Agouti,    Gene(Allele("a"), Allele("a")) },
+		{ Locus::Agouti,    Gene(Allele("A"), Allele("a")) },
 		{ Locus::Silver,    Gene(Allele("z"), Allele("Z")) },
-		{ Locus::Flaxen,    Gene(Allele("f"), Allele("f")) }
-	};
+		{ Locus::Flaxen,    Gene(Allele("F"), Allele("f")) },
+		{ Locus::Cream,     Gene(Allele("cr"), Allele("Cr")) },
+		{ Locus::Pangare,   Gene(Allele("P"), Allele("p")) }
+	}; 
 	Genotype<Locus> damG(0, std::move(damGenes));
 
 	auto sire = Horse('M', sireG);
 	auto dam = Horse('F', damG);
 
-	// --- GENOTYPE DISPLAY ---
 	std::cout << "Sire's Genotype" << std::endl;
 	sire.showGenes(Locus::Extension);
 	sire.showGenes(Locus::Agouti);
 	sire.showGenes(Locus::Silver);
 	sire.showGenes(Locus::Flaxen);
+	sire.showGenes(Locus::Cream);
+	sire.showGenes(Locus::Pangare);
 
 	std::cout << "Dam's Genotype" << std::endl;
 	dam.showGenes(Locus::Extension);
 	dam.showGenes(Locus::Agouti);
 	dam.showGenes(Locus::Silver);
-	sire.showGenes(Locus::Flaxen);
+	dam.showGenes(Locus::Flaxen);
+	dam.showGenes(Locus::Cream);
+	dam.showGenes(Locus::Pangare);
 
-	// --- OFFSPRING GENERATION & PHENOTYPE RESOLUTION ---
 	std::cout << "Offspring's Genotype" << std::endl;
 	auto offspring = generateOffspring(sire, dam);
 	offspring.showGenes(Locus::Extension);
 	offspring.showGenes(Locus::Agouti);
 	offspring.showGenes(Locus::Silver);
 	offspring.showGenes(Locus::Flaxen);
+	offspring.showGenes(Locus::Cream);
+	offspring.showGenes(Locus::Pangare);
 
 	try {
 		Phenotype finalPhenotype = getPhenotype(offspring.genotype, epistasisGraph);
