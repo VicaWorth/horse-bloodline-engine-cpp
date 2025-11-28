@@ -412,7 +412,7 @@ void epistasisGraphConstructor() {
 		{
 			[](const Gene&) { return true; },
 			{ 
-				{ Locus::Agouti }, 
+				{ Locus::Agouti, true },
 				{ Locus::Cream },
 				{ Locus::Flaxen },
 				{ Locus::Silver }
@@ -517,8 +517,14 @@ static bool evaluateNode(
 	Locus currentNode,
 	const Gene& parentGene,
 	const Genotype<Locus>& genotype,
-	Phenotype& phenotype)
+	Phenotype& phenotype,
+	std::set<Locus>& visited)
 {
+	if (visited.contains(currentNode)) {
+		return false;
+	}
+	visited.insert(currentNode);
+
 	if (epistasisGraph.find(currentNode) == epistasisGraph.end()) {
 		throw NonexistantAlleles("Graph logic missing for: " + genotype.locusToString(currentNode));
 	}
@@ -530,33 +536,35 @@ static bool evaluateNode(
 	}
 
 	bool parentIsInhibited = false;
-	bool branchIsActive = false;
 
 	const Gene& contextForChildren = (currentNode == Locus::Root)
 		? parentGene
 		: genotype.getGene(currentNode);
 
 	for (const GraphEdge& edge : node.children) {
-		bool childExpressed = evaluateNode(edge.locus, contextForChildren, genotype, phenotype);
+		bool childExpressed = evaluateNode(edge.locus, contextForChildren, genotype, phenotype, visited);
 
-		if (childExpressed) {
-			branchIsActive = true;
-
-			if (edge.inhibitsParent) {
-				parentIsInhibited = true;
-			}
+		if (childExpressed && edge.inhibitsParent) {
+			parentIsInhibited = true;
 		}
 	}
+
+	bool nodeUpdatedModifiers = false;
 
 	if (!parentIsInhibited && node.resolver) {
 		const Gene& geneForResolver = (currentNode == Locus::Root)
 			? parentGene
 			: genotype.getGene(currentNode);
+
+		size_t sizeBefore = phenotype.modifiers.size();
 		node.resolver(geneForResolver, phenotype);
-		branchIsActive = true;
+
+		if (phenotype.modifiers.size() > sizeBefore) {
+			nodeUpdatedModifiers = true;
+		}
 	}
 
-	return branchIsActive;
+	return nodeUpdatedModifiers;
 }
 
 /*
@@ -571,7 +579,9 @@ Phenotype getPhenotype(
 	Allele dummyAllele{"U"};
 	Gene root(dummyAllele, dummyAllele);
 
-	evaluateNode(Locus::Root, root, genotype, phenotype);
+	std::set<Locus> visited;
+
+	evaluateNode(Locus::Root, root, genotype, phenotype, visited);
 
 	phenotype.resolve();
 
@@ -635,21 +645,21 @@ int main()
 	std::cout << "   " << "Getting horses" << std::endl;
 
 	std::unordered_map<Locus, Gene> sireGenes = {
-		{ Locus::Extension, Gene(Allele("E"), Allele("E")) },
-		{ Locus::Agouti,    Gene(Allele("A"), Allele("a")) },
+		{ Locus::Extension, Gene(Allele("e"), Allele("e")) },
+		{ Locus::Agouti,    Gene(Allele("a"), Allele("a")) },
 		{ Locus::Silver,    Gene(Allele("Z"), Allele("Z")) },
 		{ Locus::Flaxen,    Gene(Allele("F"), Allele("f")) },
-		{ Locus::Cream,     Gene(Allele("Cr"), Allele("cr")) },
+		{ Locus::Cream,     Gene(Allele("cr"), Allele("cr")) },
 		{ Locus::Pangare,   Gene(Allele("P"), Allele("p")) }
 	};
 	Genotype<Locus> sireG(0, std::move(sireGenes));
 
 	std::unordered_map<Locus, Gene> damGenes = {
-		{ Locus::Extension, Gene(Allele("E"), Allele("e")) },
-		{ Locus::Agouti,    Gene(Allele("A"), Allele("a")) },
+		{ Locus::Extension, Gene(Allele("e"), Allele("e")) },
+		{ Locus::Agouti,    Gene(Allele("a"), Allele("a")) },
 		{ Locus::Silver,    Gene(Allele("z"), Allele("Z")) },
 		{ Locus::Flaxen,    Gene(Allele("F"), Allele("f")) },
-		{ Locus::Cream,     Gene(Allele("cr"), Allele("Cr")) },
+		{ Locus::Cream,     Gene(Allele("cr"), Allele("cr")) },
 		{ Locus::Pangare,   Gene(Allele("P"), Allele("p")) }
 	}; 
 	Genotype<Locus> damG(0, std::move(damGenes));
