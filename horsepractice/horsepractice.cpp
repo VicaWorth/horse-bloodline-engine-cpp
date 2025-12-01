@@ -108,27 +108,27 @@ struct Allele {
 	Locus locus;
 
 	std::unordered_map<std::string, Locus> symbolToLocusTable = {
-		{"E", Locus::Extension},
-		{"A", Locus::Agouti}, 
-		{"A+", Locus::Agouti}, // wild bay
-		{"AT", Locus::Agouti}, // seal
-		{"RN", Locus::KIT},
-		{"TO", Locus::KIT},
+		{"E",   Locus::Extension},
+		{"A",   Locus::Agouti}, 
+		{"A+",  Locus::Agouti}, // wild bay
+		{"AT",  Locus::Agouti}, // seal
+		{"RN",  Locus::KIT},
+		{"TO",  Locus::KIT},
 		{"SB1", Locus::KIT},
-		{"Z", Locus::Silver},
-		{"CR", Locus::Cream},
+		{"Z",   Locus::Silver},
+		{"CR",  Locus::Cream},
 		{"PRL", Locus::Pearl},
-		{"D", Locus::Dun},
-		{"CH", Locus::Champagne},
-		{"G", Locus::Gray},
-		{"SW", Locus::SplashWhite},
-		{"O", Locus::FrameOvero},
-		{"LP", Locus::Leopard},
+		{"D",   Locus::Dun},
+		{"CH",  Locus::Champagne},
+		{"G",   Locus::Gray},
+		{"SW",  Locus::SplashWhite},
+		{"O",   Locus::FrameOvero},
+		{"LP",  Locus::Leopard},
 		{"PATN1", Locus::MLeopard},
-		{"F", Locus::Flaxen},
-		{"P", Locus::Pangare},
+		{"F",   Locus::Flaxen},
+		{"P",   Locus::Pangare},
 		{"STY", Locus::Sooty},
-		{"U", Locus::Unknown} // add others later
+		{"U",   Locus::Unknown} // add others later
 	};
 
 	Allele(std::string symbol) 
@@ -424,7 +424,6 @@ void epistasisGraphConstructor() {
 				{ Locus::KIT },
 				{ Locus::Sooty },
 				{ Locus::Gray },
-				{ Locus::Dun }
 			},
 			createGeneRule([](const Gene&, const Gene&, Phenotype& p) {
 				p.modifiers.push_back([](std::string& name) {
@@ -445,6 +444,7 @@ void epistasisGraphConstructor() {
 				{ Locus::Flaxen },
 				{ Locus::Silver },
 				{ Locus::Dun },
+				{ Locus::Champagne }
 			},
 			createGeneRule(
 				std::vector<Rule>{
@@ -463,7 +463,8 @@ void epistasisGraphConstructor() {
 			{ 
 				{ 
 					{ Locus::Cream }, 
-					{ Locus::Dun }
+					{ Locus::Dun },
+					{ Locus::Champagne }
 				}
 			},
 			createGeneRule({
@@ -567,25 +568,25 @@ void epistasisGraphConstructor() {
 			createGeneRule([](const Gene& parentGene, const Gene& childGene, Phenotype& p) {
 				p.modifiers.push_back([childGene](std::string& name) {
 				if (childGene.hasAllele("RN") && childGene.hasAllele("TO")) {
-					if (replaceColor(name, "", "Roan Tobiano")) return;
+					if (replaceColor(name, "", "Roan Tobiano ")) return;
 				} 
 				else if (childGene.hasAllele("RN") && childGene.hasAllele("SB1")) {
-					if (replaceColor(name, "", "Sabino Roan")) return;
+					if (replaceColor(name, "", "Sabino Roan ")) return;
 				}
 				else if (childGene.hasAllele("RN") && childGene.hasAllele("n")) {
-					if (replaceColor(name, "", "Roan")) return;
+					if (replaceColor(name, "", "Roan ")) return;
 				}
 				else if (childGene.hasAllele("TO") && childGene.hasAllele("SB1")) {
-					if (replaceColor(name, "", "Tovero")) return;
+					if (replaceColor(name, "", "Tovero ")) return;
 				}
 				else if (childGene.hasAllele("TO")) {
-					if (replaceColor(name, "", "Tobiano")) return;
+					if (replaceColor(name, "", "Tobiano ")) return;
 				}
 				else if (childGene.hasAllele("SB1") && childGene.isHomozygous()) {
-					if (replaceColor(name, "", "Sabino White")) return;
+					if (replaceColor(name, "", "Sabino White ")) return;
 				}
 				else if (childGene.hasAllele("SB1")) {
-					if (replaceColor(name, "", "Sabino")) return;
+					if (replaceColor(name, "", "Sabino ")) return;
 				}
 				});
 			})
@@ -843,11 +844,12 @@ int main()
 			{ Locus::Dun,       Gene(Allele("D"), Allele("D")) },
 			{ Locus::SplashWhite,Gene(Allele("SW"), Allele("sw")) },
 			{ Locus::FrameOvero, Gene(Allele("O"), Allele("o")) },
-			{ Locus::Leopard, Gene(Allele("LP"), Allele("lp")) },
-			{ Locus::MLeopard, Gene(Allele("PATN1"), Allele("patn1")) },
-			{ Locus::Sooty, Gene(Allele("STY"), Allele("sty")) },
-			{ Locus::KIT, Gene(Allele("RN"), Allele("TO")) },
-			{ Locus::Gray, Gene(Allele("G"), Allele("g")) },
+			{ Locus::Leopard,   Gene(Allele("LP"), Allele("lp")) },
+			{ Locus::MLeopard,  Gene(Allele("PATN1"), Allele("patn1")) },
+			{ Locus::Sooty,     Gene(Allele("STY"), Allele("sty")) },
+			{ Locus::KIT,       Gene(Allele("RN"), Allele("TO")) },
+			{ Locus::Gray,      Gene(Allele("G"), Allele("g")) },
+			{ Locus::Champagne, Gene(Allele("Ch"), Allele("ch")) },
 		};
 		Genotype<Locus> sireG(0, std::move(sireGenes));
 
@@ -861,11 +863,12 @@ int main()
 			{ Locus::Dun,		Gene(Allele("D"), Allele("d")) },
 			{ Locus::SplashWhite,Gene(Allele("SW"), Allele("sw")) },
 			{ Locus::FrameOvero, Gene(Allele("O"), Allele("o")) },
-			{ Locus::Leopard, Gene(Allele("LP"), Allele("lp")) },
-			{ Locus::MLeopard, Gene(Allele("PATN1"), Allele("patn1")) },
-			{ Locus::Sooty, Gene(Allele("STY"), Allele("sty")) },
-			{ Locus::KIT, Gene(Allele("TO"), Allele("SB1")) },
-			{ Locus::Gray, Gene(Allele("G"), Allele("g")) },
+			{ Locus::Leopard,   Gene(Allele("LP"), Allele("lp")) },
+			{ Locus::MLeopard,  Gene(Allele("PATN1"), Allele("patn1")) },
+			{ Locus::Sooty,     Gene(Allele("STY"), Allele("sty")) },
+			{ Locus::KIT,       Gene(Allele("RN"), Allele("TO")) },
+			{ Locus::Gray,      Gene(Allele("G"), Allele("g")) },
+			{ Locus::Champagne, Gene(Allele("Ch"), Allele("ch")) },
 		}; 
 		Genotype<Locus> damG(0, std::move(damGenes));
 
