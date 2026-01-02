@@ -24,6 +24,7 @@
     <ProjectGuid>{171d554c-c121-4bdc-8bcd-be35816f2567}</ProjectGuid>
     <RootNamespace>horsepractice</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>HorseBloodlineEngine</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -125,7 +126,19 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="horsepractice.cpp" />
+    <ClCompile Include="CustomExceptions.hpp" />
+    <ClCompile Include="GeneticsCore.cpp" />
+    <ClCompile Include="main.cpp" />
+    <ClCompile Include="Phenotype.cpp" />
+    <ClCompile Include="PhenotypeEngine.cpp" />
+    <ClCompile Include="Simulation.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="GeneticsCore.hpp" />
+    <ClInclude Include="Phenotype.hpp" />
+    <ClInclude Include="PhenotypeEngine.hpp" />
+    <ClInclude Include="Simulation.hpp" />
+    <ClInclude Include="Types.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
