@@ -634,6 +634,9 @@ void epistasisGraphConstructor() {
 			{ },
 			createGeneRule([](const Gene& parentGene, const Gene& gene, Phenotype& p) {
 				if (gene.isDominantPresent()) {
+
+					// Update this later so that instead of using replaceColor,
+					// It uses another function that simply adds "Dun" to the end of existing phrases
 				p.modifiers.push_back([](std::string& name) {
 					if (replaceColor(name, "Chestnut", "Red Dun")) return;
 					if (replaceColor(name, "Palomino", "Dunalino")) return;
@@ -646,6 +649,12 @@ void epistasisGraphConstructor() {
 					if (replaceColor(name, "Smoky Cream", "Smoky Cream Dun")) return;
 					if (replaceColor(name, "Seal Brown", "Brown Dun")) return;
 					if (replaceColor(name, "Wild Bay", "Wild Bay Dun")) return;
+					if (replaceColor(name, "Gold Champagne", "Gold Chmpagne Dun")) return;
+					if (replaceColor(name, "Gold Cream", "Dunalino")) return;
+					if (replaceColor(name, "Amber Champagne", "Amber Champagne Dun")) return;
+					if (replaceColor(name, "Amber Cream", "Dunskin")) return;
+					if (replaceColor(name, "Sable Champagne", "Sable Champagne Dun")) return;
+					if (replaceColor(name, "Wild Bay Champagne", "Wild Bay Champagne Dun")) return;
 				});
 				}
 			})
