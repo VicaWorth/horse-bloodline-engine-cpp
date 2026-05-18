@@ -48,7 +48,6 @@ enum class Dominance {
 };
 
 enum class Locus {
-	Root,
 	Extension,
 	Agouti,
 	KIT,
@@ -268,7 +267,6 @@ public:
 
 	std::string locusToString(Locus l) const noexcept {
 		switch (l) {
-		case Locus::Root:         return "Root";
 		case Locus::Extension:    return "Extension";
 		case Locus::Agouti:       return "Agouti";
 		case Locus::KIT:          return "KIT";
