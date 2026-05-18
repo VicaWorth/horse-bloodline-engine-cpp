@@ -37,7 +37,7 @@ public:
 };
 
 class Gene;
-template <typename T> class Genotype;
+class Genotype;
 struct Phenotype;
 
 enum class Dominance {
@@ -98,7 +98,7 @@ struct Allele {
 		{"F",   Locus::Flaxen},
 		{"P",   Locus::Pangare},
 		{"STY", Locus::Sooty},
-		{"U",   Locus::Unknown} // add others later
+		{"U",   Locus::Unknown}
 	};
 
 	Allele(std::string symbol) 
@@ -138,7 +138,7 @@ struct Allele {
 			}		
 		}
 
-		this->symbol = std::move(symbol); // no idea if this actually does anything
+		this->symbol = std::move(symbol);
 	}
 };
 
@@ -148,8 +148,7 @@ private:
 public:
 	const Allele& getAllele1() const { return alleles.first; }
 	const Allele& getAllele2() const { return alleles.second; }
-
-	//implement rule of 5
+	
 	Gene(Allele a1, Allele a2)
 		: alleles(std::move(a1), std::move(a2)) 
 	{
@@ -207,7 +206,7 @@ public:
 			|| alleles.second.symbol == a);
 	};
 
-	constexpr bool hasAlleleA_plus() const { // should be fixed
+	constexpr bool hasAlleleA_plus() const {
 		return (alleles.first.symbol == "A+");
 	};
 
@@ -244,7 +243,6 @@ public:
 	};
 };
 
-template <typename T>
 class Genotype {
 private:
 	int m_id;
@@ -313,9 +311,9 @@ struct Punnett {
 // need to control that sex has to be a 'F' or a 'M'.
 struct Horse {
 	char sex;
-	Genotype<Locus> genotype;
+	Genotype genotype;
 
-	Horse(char s, Genotype<Locus> g)
+	Horse(char s, Genotype g)
 		: sex(s), genotype(g) {
 	}
 
@@ -334,7 +332,7 @@ struct Horse {
 This code predicts what the horse will look like using it's genotype
 */
 Phenotype getPhenotype(
-	const Genotype<Locus>& genotype) 
+	const Genotype& genotype) 
 {
 	Phenotype phenotype; 
 	
@@ -370,9 +368,9 @@ Gene resolvePunnettSquare(const Punnett<Gene>& p) {
     return p.punnett[row][col];
 }
 
-Genotype<Locus> generateOffspringGenotype(
-	const Genotype<Locus>& sGenotype,
-	const Genotype<Locus>& dGenotype) {
+Genotype generateOffspringGenotype(
+	const Genotype& sGenotype,
+	const Genotype& dGenotype) {
 
 	// consider lambda here
 	std::unordered_map<Locus, Gene> foalGenes;
@@ -380,7 +378,7 @@ Genotype<Locus> generateOffspringGenotype(
 		foalGenes.emplace(locus, std::move(resolvePunnettSquare(generatePunnett( sireGene, dGenotype.getGene(locus) ))) );
 	}
 
-	Genotype<Locus> foalGenotype(0, std::move(foalGenes));
+	Genotype foalGenotype(0, std::move(foalGenes));
 	return foalGenotype;
 }
 
@@ -416,7 +414,7 @@ int main()
 			{ Locus::Gray,      Gene(Allele("G"), Allele("g")) },
 			{ Locus::Champagne, Gene(Allele("Ch"), Allele("ch")) },
 		};
-		Genotype<Locus> sireG(0, std::move(sireGenes));
+		Genotype sireG(0, std::move(sireGenes));
 
 		std::unordered_map<Locus, Gene> damGenes = {
 			{ Locus::Extension, Gene(Allele("E"), Allele("e")) },
@@ -435,7 +433,7 @@ int main()
 			{ Locus::Gray,      Gene(Allele("G"), Allele("g")) },
 			{ Locus::Champagne, Gene(Allele("Ch"), Allele("ch")) },
 		}; 
-		Genotype<Locus> damG(0, std::move(damGenes));
+		Genotype damG(0, std::move(damGenes));
 
 		auto sire = Horse('M', sireG);
 		auto dam = Horse('F', damG);
